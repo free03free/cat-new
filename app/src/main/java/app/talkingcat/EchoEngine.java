@@ -57,6 +57,8 @@ final class EchoEngine {
     private final ExecutorService exec = Executors.newSingleThreadExecutor();
     private final AtomicInteger gen = new AtomicInteger();
     private volatile AudioTrack track;
+    /** قفل مستقل للمقطع الصوتي: لا ينتظر تحميل النموذج ولا قراءة الفهارس (كان يجمّد الواجهة). */
+    private final Object trackLock = new Object();
     private OfflineTts tts;
     private TextToSpeech sys;
     private volatile boolean sysReady = false;
@@ -740,7 +742,10 @@ final class EchoEngine {
         stopTrack();
         lastFg = System.currentTimeMillis();
         fgBusy.incrementAndGet();
-        exec.execute(() -> {
+        // المقطع الجاهز من الحزمة المضمّنة لا يحتاج النموذج: يُشغَّل على خيط مستقل فلا ينتظر نسخ النموذج وتحميله عند بدء التطبيق
+        boolean fastPre = false;
+        try { String c0 = clean(text); fastPre = !useSystem && !c0.isEmpty() && (hasPre(c0, speed) || (speedMode != 2 && preSpeedFor(c0) > 0)); } catch (Throwable ignored) {}
+        (fastPre ? playExec : exec).execute(() -> {
             try {
                 if (my != gen.get()) return;
                 String c = clean(text);
@@ -817,7 +822,7 @@ final class EchoEngine {
         // لا نهمل مستوى الصوت الذي اختاره المستخدم. القيمة تُطبق على AudioTrack نفسه.
         t.setVolume(1.0f); // مستوى الصوت طُبّق داخل process()؛ لا تخفيض مزدوج هنا
         try { if (enhancer != null) enhancer.release(); enhancer = new LoudnessEnhancer(t.getAudioSessionId()); enhancer.setTargetGain(500); enhancer.setEnabled(true); } catch (Throwable ignored) { enhancer = null; }
-        synchronized (this) { if (my != gen.get()) { t.release(); return; } track = t; }
+        synchronized (trackLock) { if (my != gen.get()) { t.release(); return; } track = t; }
         t.play();
         cb.emit("speaking", "1");
         try {
@@ -832,8 +837,9 @@ final class EchoEngine {
         }
     }
 
-    private synchronized void stopTrack() {
-        AudioTrack t = track; track = null;
+    private void stopTrack() {
+        AudioTrack t;
+        synchronized (trackLock) { t = track; track = null; }
         if (t != null) { try { t.stop(); } catch (Throwable ignored) {} try { t.release(); } catch (Throwable ignored) {} }
     }
 

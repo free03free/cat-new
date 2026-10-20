@@ -36,9 +36,9 @@ css.textContent=`
 .wr-lv button.on{background:#2f7fd6;border-color:#1c5fb0;color:#fff;box-shadow:0 4px 10px #2f7fd655}
 .wr-lv button.on::after,.wr-seg button.on::after{content:"✓";position:absolute;top:-8px;left:-6px;width:22px;height:22px;border-radius:50%;background:#2e9a45;color:#fff;font-size:13px;line-height:22px;text-align:center;border:2px solid #fff}
 .wr-nav{display:flex;align-items:center;gap:8px;margin:8px 0 6px}
-.wr-nav>button{flex:none;width:58px;height:54px;border:0;border-radius:16px;background:#fff0c8;color:#d95b2b;font-family:inherit;font-weight:900;font-size:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
+.wr-nav>button:not(.wr-title){flex:none;width:58px;height:54px;border:0;border-radius:16px;background:#fff0c8;color:#d95b2b;font-family:inherit;font-weight:900;font-size:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
 .wr-nav>button b{font-size:20px;line-height:1.1}
-.wr-title{flex:1;text-align:center;font-weight:900;font-size:17px;color:#4a3426;border:0;background:#fffaf3;border-radius:16px;padding:6px 4px;font-family:inherit;min-height:54px}
+.wr-title{flex:1 1 0;min-width:0;text-align:center;font-weight:900;font-size:17px;color:#4a3426;border:0;background:#fffaf3;border-radius:16px;padding:6px 4px;font-family:inherit;min-height:54px}
 .wr-title small{display:block;font-size:12px;color:#8a7466;font-weight:700}
 .wr-title i{font-style:normal;color:#f2b300;letter-spacing:2px}
 .wr-pick{display:block;width:100%;border:2px dashed #d9a35a;border-radius:14px;background:#fffaf0;color:#a8570b;font-family:inherit;font-weight:900;font-size:15px;padding:10px 4px;margin:2px 0 6px}
@@ -107,14 +107,19 @@ function speak(){
 
 /* ----- الرسم ----- */
 function gfont(sz){return (st.kind==="numbers"?"800 ":"700 ")+sz+'px "Noto Naskh Arabic","Noto Sans Arabic","Droid Arabic Naskh",system-ui,sans-serif'}
+function mbox(m,sz){
+ if(typeof m.actualBoundingBoxAscent==="number"&&isFinite(m.actualBoundingBoxAscent))return {l:m.actualBoundingBoxLeft,r:m.actualBoundingBoxRight,a:m.actualBoundingBoxAscent,d:m.actualBoundingBoxDescent};
+ /* WebView قديم بلا actualBoundingBox: تقدير من العرض وحجم الخط */
+ return {l:0,r:m.width,a:sz*0.66,d:sz*0.22};
+}
 function fit(ctx,ch){
  const S=st.S;let sz=S*.6;
  ctx.textAlign="left";ctx.textBaseline="alphabetic";ctx.font=gfont(sz);
- let m=ctx.measureText(ch);
- const w=m.actualBoundingBoxLeft+m.actualBoundingBoxRight,h=m.actualBoundingBoxAscent+m.actualBoundingBoxDescent;
+ let b=mbox(ctx.measureText(ch),sz);
+ const w=b.l+b.r,h=b.a+b.d;
  const k=Math.min(S*.62/Math.max(w,1),S*.62/Math.max(h,1));
- sz*=k;ctx.font=gfont(sz);m=ctx.measureText(ch);
- return [S/2-(m.actualBoundingBoxRight-m.actualBoundingBoxLeft)/2,S/2+(m.actualBoundingBoxAscent-m.actualBoundingBoxDescent)/2];
+ sz*=k;ctx.font=gfont(sz);b=mbox(ctx.measureText(ch),sz);
+ return [S/2-(b.r-b.l)/2,S/2+(b.a-b.d)/2];
 }
 /* ----- الهيكل المركزي للشكل (خط واحد منقّط بدل خطّي الحافة): ترقيق Zhang-Suen ثم حذف الأشواك القصيرة ----- */
 const SK={key:"",pts:[],dots:[]};
@@ -218,11 +223,11 @@ function mkCanvas(S){const c=document.createElement("canvas");c.width=c.height=S
 function score(){
  const S=Math.round(st.S),it=cur();
  // تغطية: مسار القلم بسُمكه + هامش تساهل صغير
- const cov=mkCanvas(S),cx=cov.getContext("2d");strokesTo(cx,penW()+S*.02,S);
+ const cov=mkCanvas(S),cx=cov.getContext("2d");strokesTo(cx,penW()+S*.035,S);
  const C=cx.getImageData(0,0,S,S).data;
  // حدود مسموحة للخروج: الشكل موسَّعًا قليلًا
  const dil=mkCanvas(S),dx=dil.getContext("2d"),q=fit(dx,it.ch);
- dx.fillStyle="#000";dx.fillText(it.ch,q[0],q[1]);dx.lineWidth=S*.06;dx.lineJoin="round";dx.strokeStyle="#000";dx.strokeText(it.ch,q[0],q[1]);
+ dx.fillStyle="#000";dx.fillText(it.ch,q[0],q[1]);dx.lineWidth=S*.12;dx.lineJoin="round";dx.strokeStyle="#000";dx.strokeText(it.ch,q[0],q[1]);
  const D=dx.getImageData(0,0,S,S).data;
  const at=(arr,x,y)=>arr[(Math.min(S-1,Math.max(0,y))*S+Math.min(S-1,Math.max(0,x)))*4+3];
  // عينات الهدف مع رقم المكوّن (الجسم، الهمزة، كل نقطة...)
@@ -241,10 +246,19 @@ function score(){
  }else{
   skeleton().pts.forEach(q2=>samples.push([Math.round(q2[0]),Math.round(q2[1]),q2[2]]));
  }
+ // أكبر جزء متصل من الشكل بقي بلا تغطية (يميّز الشكل الناقص، مثل رسم 7 فوق 2، عن الشكل التقريبي الكامل)
+ const uncov=[];let gtot=0;
+ samples.forEach(s_=>{if(st.level==="trace"&&((s_[0]/3|0)%3||(s_[1]/3|0)%3))return;gtot++;if(at(C,s_[0],s_[1])<=40)uncov.push(s_)});
+ let gap=0;
+ if(uncov.length&&gtot){const seen=new Uint8Array(uncov.length),lim=(S*.06)*(S*.06);
+  for(let i=0;i<uncov.length;i++){if(seen[i])continue;let n=0;const q=[i];seen[i]=1;
+   while(q.length){const a=uncov[q.pop()];n++;for(let j=0;j<uncov.length;j++){if(seen[j])continue;const b=uncov[j],dx_=a[0]-b[0],dy_=a[1]-b[1];if(dx_*dx_+dy_*dy_<=lim){seen[j]=1;q.push(j)}}}
+   if(n>gap)gap=n}
+  gap=gap/gtot}
  const tot=samples.length;let hit=0;const byC={};
  samples.forEach(s=>{const h=at(C,s[0],s[1])>40;if(h)hit++;const o=byC[s[2]]||(byC[s[2]]={n:0,h:0});o.n++;if(h)o.h++});
  // كل مكوّن في الحرف (نقطة، همزة، جسم) يجب أن يُكتب فعلًا؛ المكوّنات الصغيرة تُفحص بقلم بلا هامش تساهل زائد
- const gl=glyphComps(S,it),cov2=mkCanvas(S),cx2=cov2.getContext("2d");strokesTo(cx2,penW()+S*.012,S);
+ const gl=glyphComps(S,it),cov2=mkCanvas(S),cx2=cov2.getContext("2d");strokesTo(cx2,penW()+S*.05,S);
  const Ct=cx2.getImageData(0,0,S,S).data,bigN=gl.total*.12,gb={};
  gl.samples.forEach(q=>{const small=gl.cnt[q[2]]<bigN,h=at(small?Ct:C,q[0],q[1])>40,o=gb[q[2]]||(gb[q[2]]={n:0,h:0});o.n++;if(h)o.h++});
  let worst=1;Object.keys(gb).forEach(k=>{const o=gb[k];if(o.n>=2&&(gl.cnt[k]<bigN||st.level==="trace"))worst=Math.min(worst,o.h/o.n)});
@@ -264,7 +278,7 @@ function score(){
   if(sI&&sO/sI>.6)extra++;
  });
  const cv=tot?hit/tot:0,sy=ink?out/ink:1;
- return {cover:cv,worst:worst,stray:sy,ink:ink,extra:extra,outLen:out*step,S:S,ncomp:ncomp,pct:Math.round(100*cv*(1-sy))};
+ return {cover:cv,worst:worst,stray:sy,ink:ink,extra:extra,outLen:out*step,S:S,ncomp:ncomp,gap:gap,small:Object.keys(gl.cnt).some(k=>gl.cnt[k]<bigN),pct:Math.round(100*cv*(1-sy))};
 }
 /* مكوّنات الحرف نفسه (الجسم، كل نقطة، الهمزة...) تُستخرج من رسم الحرف مهما كان المستوى */
 function glyphComps(S,it){
@@ -281,13 +295,18 @@ function glyphComps(S,it){
  for(let b=0;b<W;b++)for(let a=0;a<W;a++){const l=lab[b*W+a];if(l>=0){samples.push([a*k,b*k,l]);cnt[l]=(cnt[l]||0)+1}}
  return {samples:samples,cnt:cnt,total:samples.length};
 }
+/* معايير مرنة: يكفي أن يطابق الرسمُ الشكلَ تقريبًا (تغطية الشكل + البقاء قريبًا منه + عدم ترك نقطة كاملة) */
+function grade(r){
+ let s=0;
+ if(r.cover>=.78&&r.worst>=.45&&r.stray<=.30&&r.extra===0&&r.gap<=.10)s=3;
+ else if(r.cover>=.62&&r.worst>=.30&&r.stray<=.45&&r.gap<=.25)s=2;
+ else if(r.cover>=.40&&r.stray<=.60)s=1;
+ if(r.extra>0&&s>2)s=2;
+ return s;
+}
 function result(r){
  const lv=st.level;
- let s=0;
- if(r.cover>=.85&&r.worst>=.75&&r.stray<=.18&&r.extra===0)s=3;
- else if(r.cover>=.68&&r.worst>=.5&&r.stray<=.33)s=2;
- else if(r.cover>=.45&&r.stray<=.55)s=1;
- if((r.extra>0||r.worst<.75)&&s>1)s=1;
+ const s=grade(r);
  setBest(s);refreshTitle();
  const msgs=[
   "حاول مرة أخرى وتتبّع الشكل ببطء",
@@ -297,10 +316,11 @@ function result(r){
  ];
  let m=msgs[s];
  if(s<3){
-  if(r.extra>0)m="هناك علامة زائدة؛ انتبه لعدد النقاط والهمزة في هذا الحرف";
-  else if(r.stray>.33)m="حاول أن تبقى فوق الشكل ولا تخرج منه";
-  else if(r.worst<.75&&r.cover>=.5)m="ينقصك جزء صغير في الحرف (نقطة أو همزة)، اكتبه في مكانه الصحيح";
-  else if(r.cover<.68)m=lv==="trace"?"بقي جزء من الشكل بلا تلوين":"بقي جزء من النقاط بلا رسم";
+  if(r.extra>0)m=r.small?"هناك علامة زائدة؛ انتبه لعدد النقاط والهمزة في هذا الحرف":"هناك خط زائد خارج الشكل، حاول أن تبقى فوقه";
+  else if(r.stray>.30)m="حاول أن تبقى فوق الشكل ولا تخرج منه كثيرًا";
+  else if(r.gap>.10&&!(r.worst<.45&&r.small))m=lv==="trace"?"بقي جزء من الشكل بلا تلوين":"بقي جزء من النقاط بلا رسم";
+  else if(r.worst<.45&&r.cover>=.5)m=r.small?"ينقصك جزء صغير في الحرف (نقطة أو همزة)، اكتبه قريبًا من مكانه":"بقي جزء من الشكل بلا "+(lv==="trace"?"تلوين":"رسم");
+  else if(r.cover<.78)m=lv==="trace"?"بقي جزء من الشكل بلا تلوين":"بقي جزء من النقاط بلا رسم";
  }
  msg(starsText(s)+"  "+(r.pct!==undefined?r.pct+"٪  ":"")+m,true);
  cheer(s);
@@ -365,7 +385,7 @@ function autoCheck(){
  st.autoT=0;
  if(st.level==="free"||!st.strokes.length||st.cur||st.done)return;
  const r=score();
- if(r.cover>=.85&&r.worst>=.75&&r.stray<=.18&&r.extra===0&&r.ink>0){
+ if(grade(r)===3&&r.ink>0){
   st.done=true;setBest(3);refreshTitle();buildPick();
   msg(starsText(3)+"  ممتاز! كتابتك صحيحة ودقيقة",true);
   cheer(3);

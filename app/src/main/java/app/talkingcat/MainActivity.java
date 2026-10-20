@@ -53,6 +53,10 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
+        s.setUseWideViewPort(true);          // يسمح لواجهة الويب بتكبير التخطيط على التابلت (fit script في index.html)
+        s.setLoadWithOverviewMode(false);
+        s.setSupportZoom(false);
+        s.setBuiltInZoomControls(false);
 
         engine = new EchoEngine(this, new EchoEngine.Callback() {
             @Override public void emit(String type, String payload) {
