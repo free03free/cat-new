@@ -209,7 +209,40 @@ function strokesTo(ctx,w,S){
   const l=s[s.length-1];ctx.lineTo(l[0]*S,l[1]*S);ctx.stroke();
  });
 }
-function drawInk(){clearCtx(ix);strokesTo(ix,penW(),st.S)}
+function drawInk(){
+ clearCtx(ix);strokesTo(ix,penW(),st.S);
+ // في «صِلِ النقاط»: النقاط تُرسم فوق الخط دائمًا، فلا تُخفيها كتلة ولا يظن الطفل أنها «مُسحت»
+ if(st.level==="dots"&&cur()){
+  const sk=skeleton(),r=Math.max(3.5,st.S*.0125);
+  sk.dots.forEach(q=>{ix.beginPath();ix.arc(q[0],q[1],r+1.6,0,6.2832);ix.fillStyle="#fff";ix.fill();ix.beginPath();ix.arc(q[0],q[1],r,0,6.2832);ix.fillStyle="#2c4a8c";ix.fill()});
+ }
+}
+/* نسبة الحبر خارج «ممر» النقاط (نحو 7% من اللوحة حول مسار الحرف): الرسم الصحيح داخله، والتظليل الواسع يخرج منه */
+function outsideRatio(S){
+ if(st.level!=="dots"||!st.strokes.length)return 0;
+ const sc=.5,N=Math.max(60,Math.round(S*sc));
+ const m=mkCanvas(N),mx=m.getContext("2d");mx.scale(sc,sc);mx.fillStyle="#000";const rr=S*.07;
+ skeleton().pts.forEach(q=>{mx.beginPath();mx.arc(q[0],q[1],rr,0,6.2832);mx.fill()});
+ const k=mkCanvas(N),kx=k.getContext("2d");kx.scale(sc,sc);strokesTo(kx,penW(),S);
+ const M=mx.getImageData(0,0,N,N).data,K=kx.getImageData(0,0,N,N).data;let ink=0,out=0;
+ for(let i=3;i<K.length;i+=4)if(K[i]>40){ink++;if(M[i]<=40)out++}
+ return ink?out/ink:0;
+}
+/* كتلة: خط يعيد المرور على المساحة نفسها مرارًا (تظليل/تلطيخ) بدل أن يصل النقاط بخط واحد */
+function blobCount(S){
+ if(st.level!=="dots")return 0;
+ const w=penW(),sc=.5,N=Math.max(60,Math.round(S*sc));let n=0;
+ st.strokes.forEach(s_=>{
+  if(s_.length<8)return;
+  let L=0;for(let i=1;i<s_.length;i++)L+=Math.hypot((s_[i][0]-s_[i-1][0])*S,(s_[i][1]-s_[i-1][1])*S);
+  if(L<S*.3)return;
+  const c=mkCanvas(N),x=c.getContext("2d");x.scale(sc,sc);x.lineCap=x.lineJoin="round";x.lineWidth=w;x.strokeStyle="#000";
+  x.beginPath();x.moveTo(s_[0][0]*S,s_[0][1]*S);for(let i=1;i<s_.length;i++)x.lineTo(s_[i][0]*S,s_[i][1]*S);x.stroke();
+  const d=x.getImageData(0,0,N,N).data;let A=0;for(let i=3;i<d.length;i+=4)if(d[i]>40)A++;
+  A=A/(sc*sc);if(A>0&&L*w/A>2.2)n++;
+ });
+ return n;
+}
 function setup(){
  const b=$("wr-board"),host=b.parentNode,w=Math.max(200,Math.min(host.clientWidth-44,420)),d=window.devicePixelRatio||1;
  st.S=w;b.style.width=w+"px";b.style.height=w+"px";
@@ -278,7 +311,7 @@ function score(){
   if(sI&&sO/sI>.6)extra++;
  });
  const cv=tot?hit/tot:0,sy=ink?out/ink:1;
- return {cover:cv,worst:worst,stray:sy,ink:ink,extra:extra,outLen:out*step,S:S,ncomp:ncomp,gap:gap,small:Object.keys(gl.cnt).some(k=>gl.cnt[k]<bigN),pct:Math.round(100*cv*(1-sy))};
+ return {cover:cv,worst:worst,stray:sy,ink:ink,extra:extra,outLen:out*step,S:S,ncomp:ncomp,blob:blobCount(S)+(outsideRatio(S)>.55?1:0),outside:outsideRatio(S),gap:gap,small:Object.keys(gl.cnt).some(k=>gl.cnt[k]<bigN),pct:Math.round(100*cv*(1-sy))};
 }
 /* مكوّنات الحرف نفسه (الجسم، كل نقطة، الهمزة...) تُستخرج من رسم الحرف مهما كان المستوى */
 function glyphComps(S,it){
@@ -297,11 +330,14 @@ function glyphComps(S,it){
 }
 /* معايير مرنة: يكفي أن يطابق الرسمُ الشكلَ تقريبًا (تغطية الشكل + البقاء قريبًا منه + عدم ترك نقطة كاملة) */
 function grade(r){
+ if(r.blob>0)return 0;
  let s=0;
  if(r.cover>=.78&&r.worst>=.45&&r.stray<=.30&&r.extra===0&&r.gap<=.10)s=3;
  else if(r.cover>=.62&&r.worst>=.30&&r.stray<=.45&&r.gap<=.25)s=2;
  else if(r.cover>=.40&&r.stray<=.60)s=1;
  if(r.extra>0&&s>2)s=2;
+ if(r.outside>.25&&s>2)s=2;
+ if(r.outside>.40&&s>1)s=1;
  return s;
 }
 function result(r){
@@ -316,7 +352,9 @@ function result(r){
  ];
  let m=msgs[s];
  if(s<3){
-  if(r.extra>0)m=r.small?"هناك علامة زائدة؛ انتبه لعدد النقاط والهمزة في هذا الحرف":"هناك خط زائد خارج الشكل، حاول أن تبقى فوقه";
+  if(r.blob>0)m="لا تُلوّن كتلة فوق النقاط؛ صِل النقاط بخط واحد من أول نقطة إلى آخرها";
+  else if(r.outside>.25)m="حاول أن تبقى فوق النقاط ولا تبتعد عنها كثيرًا";
+  else if(r.extra>0)m=r.small?"هناك علامة زائدة؛ انتبه لعدد النقاط والهمزة في هذا الحرف":"هناك خط زائد خارج الشكل، حاول أن تبقى فوقه";
   else if(r.stray>.30)m="حاول أن تبقى فوق الشكل ولا تخرج منه كثيرًا";
   else if(r.gap>.10&&!(r.worst<.45&&r.small))m=lv==="trace"?"بقي جزء من الشكل بلا تلوين":"بقي جزء من النقاط بلا رسم";
   else if(r.worst<.45&&r.cover>=.5)m=r.small?"ينقصك جزء صغير في الحرف (نقطة أو همزة)، اكتبه قريبًا من مكانه":"بقي جزء من الشكل بلا "+(lv==="trace"?"تلوين":"رسم");
