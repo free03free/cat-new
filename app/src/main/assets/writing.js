@@ -225,7 +225,10 @@ function gStroke(ctx,ch,p){
 /* ----- الهيكل المركزي للشكل (خط واحد منقّط بدل خطّي الحافة): ترقيق Zhang-Suen ثم حذف الأشواك القصيرة ----- */
 /* ===== نماذج مرسومة يدويًا للحروف التي يشوّهها الترقيق (حاليًا: أ) ===== */
 const LP={
-"أ":{s:[[[54,4],[54,70]],[[66,-37],[52,-38],[44,-31],[52,-25],[63,-21],[52,-13],[40,-11]]],d:[]}
+"أ":{s:[[[54,4],[54,70]],[[66,-37],[52,-38],[44,-31],[52,-25],[63,-21],[52,-13],[40,-11]]],d:[]},
+/* ر ز: نقاط كتبها المستخدم بيده (e:1 = تُعرض النقاط كما هي دون إعادة توزيع) */
+"ر":{e:1,s:[[[682,184],[700,243],[699,295],[717,345],[705,411],[702,466],[680,496],[670,551],[641,606],[618,656],[567,698],[502,736],[421,765],[367,782],[305,772]]],d:[]},
+"ز":{e:1,s:[[[788,343],[794,390],[783,457],[789,544],[770,625],[756,670],[693,711],[625,762],[539,797],[472,810],[412,838],[356,851]]],d:[[762,143]]}
 };
 /* Catmull-Rom داخل كل مقطع بين زاويتين */
 function sampleStroke(pts,step){
@@ -271,6 +274,7 @@ function modelSkel(ch,S){
   anchors.push(sg.length-1);
   const at=L=>{let j=1;while(j<cum.length-1&&cum[j]<L)j++;const a=cum[j]-cum[j-1]||1,f=(L-cum[j-1])/a;return [sg[j-1][0]+(sg[j][0]-sg[j-1][0])*f,sg[j-1][1]+(sg[j][1]-sg[j-1][1])*f]};
   const first=sg[0],last=sg[sg.length-1],closed=Math.hypot(first[0]-last[0],first[1]-last[1])<gap*.6;
+  if(M.e){M.s[ci].forEach(q=>{const t=T(q);dots.push([t[0],t[1]])});return}
   for(let a=0;a<anchors.length-1;a++){
    const L0=cum[anchors[a]],L1=cum[anchors[a+1]],gp=cum[cum.length-1]<S*.3?S*.036:gap,n=Math.max(1,Math.round((L1-L0)/gp));
    for(let t=(a===0?0:1);t<=n;t++){
@@ -291,6 +295,21 @@ function zoneHit(ch,x,y,S){
  const r=Math.floor(y/S*128),c=Math.floor(x/S*128);
  for(let i=0;i<zs.length;i++){const q=zs[i];if(q[0]===r&&c>=q[1]&&c<=q[2])return true}
  return false;
+}
+/* ===== تصحيحات النقاط من لقطات المستخدم (إحداثيات نسبية من اللوحة S): del=[x,y,نصف القطر] نقطة تُحذف (كانت مغطاة بالبرتقالي)، add=[x,y] نقطة ناقصة تُضاف (كانت نقطة زرقاء كبيرة) ===== */
+const FIX={"س":{"add":[[0.4811,0.4284]]},"ش":{"del":[[0.4281,0.5173,0.02]],"add":[[0.4786,0.5081],[0.4718,0.5618]]},"ض":{"add":[[0.7741,0.4588]]},"ط":{"add":[[0.345,0.2292],[0.3749,0.3032],[0.2582,0.6868]]},"ظ":{"add":[[0.3314,0.1966],[0.3473,0.2981],[0.256,0.6989]]},"ف":{"add":[[0.5882,0.5014]]},"ق":{"add":[[0.469,0.4432]]},"م":{"add":[[0.3875,0.3109],[0.3827,0.3782],[0.4001,0.4327]]}};
+function applyFix(ch,pts,dots,S){
+ const f=FIX[ch];if(!f)return [pts,dots];
+ let P=pts,D=dots;
+ if(f.del){const hit=q=>f.del.some(z=>Math.hypot(q[0]-z[0]*S,q[1]-z[1]*S)<z[2]*S);P=P.filter(q=>!hit(q));D=D.filter(q=>!hit(q))}
+ if(f.add){P=P.slice();D=D.slice();const r=Math.max(3.5,S*.0125);
+  f.add.forEach(a=>{const x=a[0]*S,y=a[1]*S;let id=0,bd=1e18;
+   P.forEach(q=>{const d=(q[0]-x)*(q[0]-x)+(q[1]-y)*(q[1]-y);if(d<bd){bd=d;id=q[2]}});
+   D.push([x,y]);P.push([x,y,id]);
+   for(let k=0;k<6;k++)P.push([x+Math.cos(k*Math.PI/3)*r*1.1,y+Math.sin(k*Math.PI/3)*r*1.1,id]);
+  });
+ }
+ return [P,D];
 }
 const SK={key:"",pts:[],dots:[]};
 function thin(bw,G){
@@ -452,8 +471,10 @@ function skeleton(){
   if(id!=bodyId&&ext<S*.22){const ps=pathDots(g,k,S);if(ps){ps.forEach(q=>dots.push(q));return}}
   orderedDots(g,k,S*.056).forEach(q=>dots.push(q));
  });
- if(st.kind==="letters"&&ZONES[it.ch]){const keep=q=>!zoneHit(it.ch,q[0],q[1],S);SK.key=key;SK.pts=pts.filter(keep);SK.dots=dots.filter(keep);return SK}
- SK.key=key;SK.pts=pts;SK.dots=dots;return SK;
+ let fp=pts,fd=dots;
+ if(st.kind==="letters"&&ZONES[it.ch]){const keep=q=>!zoneHit(it.ch,q[0],q[1],S);fp=pts.filter(keep);fd=dots.filter(keep)}
+ if(st.kind==="letters"){const r=applyFix(it.ch,fp,fd,S);fp=r[0];fd=r[1]}
+ SK.key=key;SK.pts=fp;SK.dots=fd;return SK;
 }
 
 function clearCtx(ctx){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);ctx.restore()}
