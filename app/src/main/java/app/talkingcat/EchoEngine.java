@@ -306,9 +306,10 @@ final class EchoEngine {
             File[] fs = cacheDir().listFiles();
             if (fs == null) return;
             long total = 0; for (File f : fs) total += f.length();
-            if (total <= 600L * 1024 * 1024) return;
+            // الأصوات المحفوظة تبقى دائمًا (حتى لو غُيّر الصوت ثم رُجع إليه). حدّ أمان واسع فقط لحماية مساحة الجهاز.
+            if (total <= 1536L * 1024 * 1024) return;
             java.util.Arrays.sort(fs, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
-            for (File f : fs) { if (total <= 500L * 1024 * 1024) break; total -= f.length(); f.delete(); }
+            for (File f : fs) { if (total <= 1200L * 1024 * 1024) break; total -= f.length(); f.delete(); }
         } catch (Throwable ignored) {}
     }
 

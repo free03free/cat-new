@@ -263,7 +263,7 @@ $("import-sounds").onclick=()=>{try{TomNative.importSounds()}catch(e){}};
 window.onSoundsImported=function(){schedulePrefetch()};
 /* ---- كل خيار في بطاقة مستقلة، وتحته الافتراضي وزر استعادته ---- */
 (function(){
- const DEF_LABEL={"speech-speed":"0.90","speed-mode":"تلقائي (ذكي)","voice-id":"⚡ صوت 10 (الأوضح)","tts-quality":"الأعلى وضوحًا","system-voice":"مُعطَّل","learning-volume-level":"100%","max-number":"10","enable-games-tab":"مفعَّل","enable-writing-tab":"مفعَّل"};
+ const DEF_LABEL={"speech-speed":"0.90","speed-mode":"تلقائي (ذكي)","voice-id":"صوت 10 (الأوضح)","tts-quality":"الأعلى وضوحًا","system-voice":"مُعطَّل","learning-volume-level":"100%","max-number":"10","enable-games-tab":"مفعَّل","enable-writing-tab":"مفعَّل"};
  const list=[];
  Object.keys(SET_DEF).forEach(id=>{
   const e=$(id),box=e&&e.closest(".opt");if(!box)return;

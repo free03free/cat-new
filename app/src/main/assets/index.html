@@ -78,7 +78,7 @@ maybe();
 </div>
 <div id="normal-settings" class="settings-page">
 <h3 class="grp">🎙️ الصوت</h3>
-<div class="opt"><label class="sfield"><b>اختيار الصوت</b><select id="voice-id"><option value="0">🐢 صوت 1</option><option value="1">⚡ صوت 2</option><option value="2">🐢 صوت 3</option><option value="3">⚡ صوت 4</option><option value="4">🐢 صوت 5</option><option value="5">🐢 صوت 6</option><option value="6">⚡ صوت 7</option><option value="7">⚡ صوت 8</option><option value="8">🐢 صوت 9</option><option value="9" selected>⚡ صوت 10 (الأوضح)</option></select></label><div class="hint" style="margin:6px 4px 0;font-size:13px;line-height:1.7;color:#806d60">⚡ مدمج: نطق سريع فوري بلا انتظار<br>🐢 غير مدمج: نطق أبطأ، يُولَّد عند أول استخدام ثم يُحفظ</div></div>
+<div class="opt"><label class="sfield"><b>اختيار الصوت</b><select id="voice-id"><option value="0">صوت 1</option><option value="1">صوت 2</option><option value="2">صوت 3</option><option value="3">صوت 4</option><option value="4">صوت 5</option><option value="5">صوت 6</option><option value="6">صوت 7</option><option value="7">صوت 8</option><option value="8">صوت 9</option><option value="9" selected>صوت 10 (الأوضح)</option></select></label></div>
 <div class="opt"><label class="sfield"><b>جودة النطق</b><select id="tts-quality"><option value="3">سريع</option><option value="4">متوازن</option><option value="6">أوضح (أبطأ)</option><option value="8" selected>الأعلى وضوحًا (الافتراضي)</option></select></label></div>
 <div class="opt"><label class="srow"><span class="st"><b>صوت النظام</b><small>استعمال صوت الجهاز إن وُجد</small></span><input id="system-voice" class="sw" type="checkbox"></label></div>
 <button id="test-voice" type="button" class="primary">🔊 جرّب الصوت</button>
@@ -101,4 +101,59 @@ maybe();
 <p class="note">إن نسيتَ الرمز أو النمط فالحل الوحيد مسح بيانات التطبيق من إعدادات الجهاز.</p></div>
 <button id="reset-all" type="button">↺ إعادة الضبط الافتراضي</button>
 <button id="save-settings" class="primary">حفظ الإعدادات</button></div></section>
-<script src="speech-data.js?v=6"></script><script src="app.js?v=53"></script><script src="games.js?v=26"></script><script src="writing.js?v=10"></script></main></body></html>
+<script src="speech-data.js?v=6"></script><script src="app.js?v=53"></script><script src="games.js?v=26"></script><script src="writing.js?v=10"></script></main><script>
+/* شريطا «مستوى الصوت» و«سرعة النطق»: يتغيران بسحب المؤشر فقط (اللمس على الشريط لا يغيّر القيمة)، ثم لافتة تأكيد: تأكيد / تراجع */
+(function(){
+var IDS=[["learning-volume-level","مستوى الصوت",function(v){return Math.round(v)+"%"}],["speech-speed","سرعة النطق",function(v){return (+v).toFixed(2)}]];
+var bar=null,pending=null,hintT=null;
+function mkBar(){
+ if(bar)return bar;bar=document.createElement("div");bar.id="chg-bar";bar.hidden=true;
+ bar.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:92px;z-index:100000;width:min(92vw,440px);box-sizing:border-box;background:#3b2a1c;color:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 8px 24px rgba(0,0,0,.35);font:700 15px/1.6 system-ui,sans-serif;display:flex;align-items:center;gap:10px;direction:rtl";
+ bar.innerHTML='<span id="chg-txt" style="flex:1"></span><button id="chg-ok" type="button" style="border:0;border-radius:12px;padding:9px 14px;font:800 14px system-ui;background:#2e9c4a;color:#fff">تأكيد</button><button id="chg-undo" type="button" style="border:0;border-radius:12px;padding:9px 14px;font:800 14px system-ui;background:#fff;color:#7a3b00">تراجع</button>';
+ document.body.appendChild(bar);
+ bar.querySelector("#chg-ok").onclick=function(){pending=null;hide()};
+ bar.querySelector("#chg-undo").onclick=function(){revert();hide()};
+ return bar;
+}
+function hide(){if(bar)bar.hidden=true;clearTimeout(hintT)}
+function setVal(el,v){el.value=v;el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}))}
+function revert(){if(!pending)return;setVal(pending.el,pending.old);pending=null}
+function ask(item,el,old){
+ if(pending&&pending.el!==el)pending=null;            // تغيير سابق لشريط آخر يُعدّ مؤكَّدًا
+ if(!pending)pending={el:el,old:old};
+ var b=mkBar();b.querySelector("#chg-txt").textContent="تغيير "+item[1]+" إلى "+item[2](el.value)+"؟";
+ b.querySelector("#chg-ok").style.display=b.querySelector("#chg-undo").style.display="";b.hidden=false;clearTimeout(hintT);
+}
+function hint(){
+ if(pending)return;var b=mkBar();b.querySelector("#chg-txt").textContent="اسحب المؤشر لتغيير القيمة (اللمس وحده لا يغيّرها)";
+ b.querySelector("#chg-ok").style.display=b.querySelector("#chg-undo").style.display="none";b.hidden=false;clearTimeout(hintT);hintT=setTimeout(function(){if(!pending)hide()},2200);
+}
+function guard(item){
+ var el=document.getElementById(item[0]);if(!el)return;
+ var lab=el.closest("label")||el.parentNode,st=null;
+ el.style.pointerEvents="none";lab.style.touchAction="pan-y";lab.style.userSelect="none";lab.style.webkitUserSelect="none";
+ function geo(){var r=el.getBoundingClientRect(),min=+el.min,max=+el.max,f=(+el.value-min)/(max-min),tw=28,rtl=getComputedStyle(el).direction==="rtl";if(rtl)f=1-f;return{r:r,min:min,max:max,tw:tw,rtl:rtl,x:r.left+tw/2+f*(r.width-tw)}}
+ lab.addEventListener("pointerdown",function(e){
+  var g=geo();if(g.r.width<=0)return;
+  var inY=e.clientY>=g.r.top-18&&e.clientY<=g.r.bottom+18,onX=Math.abs(e.clientX-g.x)<=30;
+  if(!inY)return;                                      // لمس العنوان أو خارج الشريط: لا شيء
+  if(!onX){hint();return}                              // لمس الشريط بعيدًا عن المؤشر: لا يغيّر القيمة
+  try{lab.setPointerCapture(e.pointerId)}catch(_){}
+  st={id:e.pointerId,x0:e.clientX,v0:+el.value,old:+el.value,moved:false};
+ });
+ lab.addEventListener("pointermove",function(e){
+  if(!st||e.pointerId!==st.id)return;var g=geo(),span=Math.max(1,g.r.width-g.tw),df=(e.clientX-st.x0)/span;if(g.rtl)df=-df;
+  var step=+el.step||1,v=st.v0+df*(g.max-g.min);v=Math.round(v/step)*step;v=Math.max(g.min,Math.min(g.max,v));v=+v.toFixed(4);
+  if(v!==+el.value){setVal(el,v);st.moved=true}
+ });
+ function end(e){if(!st||(e&&e.pointerId!==st.id))return;var s=st;st=null;if(s.moved&&+el.value!==s.old)ask(item,el,pending&&pending.el===el?pending.old:s.old);else if(s.moved)pending&&pending.el===el&&hide()}
+ lab.addEventListener("pointerup",end);lab.addEventListener("pointercancel",end);
+}
+function init(){IDS.forEach(guard);
+ document.addEventListener("click",function(e){var t=e.target;if(t&&(t.id==="save-settings"||t.id==="reset-all")){pending=null;hide()}},true);
+ var set=document.getElementById("settings");
+ if(set&&window.MutationObserver)new MutationObserver(function(){if(set.hidden){revert();hide()}}).observe(set,{attributes:true,attributeFilter:["hidden"]});
+}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
+})();
+</script></body></html>
