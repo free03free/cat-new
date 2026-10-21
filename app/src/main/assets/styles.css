@@ -422,3 +422,6 @@ button:focus,a:focus,[tabindex]:focus,.tab:focus,.mode:focus{outline:none}
 
 /* شريط «جارٍ تجهيز الأصوات» كان يغطي أزرار أسفل الصفحة؛ مساحة إضافية ليمكن تمرير المحتوى فوقه */
 .app{padding-bottom:84px}
+
+/* النموذج المصغّر في «اكتب بنفسك» */
+#wr-m{position:absolute;left:8px;top:8px;display:none;border:2px dashed #cdb89a;border-radius:12px;background:rgba(255,255,255,.9);pointer-events:none;touch-action:none;z-index:3}

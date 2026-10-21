@@ -12,9 +12,9 @@ const sylKind=CS.sylKind||(()=>"");
 function pref(k,d){try{const v=parseFloat(localStorage.getItem(k));return isFinite(v)?v:d}catch(e){return d}}
 function maxNum(){let m=parseInt(localStorage.getItem("learningMaxNumber")||"10",10);if(!isFinite(m)||m<1)m=10;return Math.min(m,100)}
 const LEVELS={
- trace:{hint:"لوّن فوق الشكل الرمادي دون أن تخرج منه، وسأشجعك عند الإتقان",pen:.055},
- dots:{hint:"ارسم فوق النقاط بالترتيب دون أن تبتعد عنها، وسأشجعك عند الإتقان",pen:.045},
- free:{hint:"اكتب بيدك بلا أي مساعدة، ثم اضغط «تحقق» لترى النموذج",pen:.045}
+ trace:{hint:"لوّن داخل الشكل الرمادي؛ ما يخرج عنه لا يظهر، وسأشجعك عند الإتقان",pen:.055},
+ dots:{hint:"صِل النقاط داخل الشكل بالترتيب؛ ما يخرج عنه لا يظهر، وسأشجعك عند الإتقان",pen:.045},
+ free:{hint:"اكتب بنفسك وانظر إلى النموذج المصغّر في الزاوية، ثم اضغط «تحقق» لترى النموذج كبيرًا",pen:.045}
 };
 const st={kind:"letters",level:"trace",idx:0,strokes:[],cur:null,S:300,modelT:0};
 
@@ -112,8 +112,28 @@ function mbox(m,sz){
  /* WebView قديم بلا actualBoundingBox: تقدير من العرض وحجم الخط */
  return {l:0,r:m.width,a:sz*0.66,d:sz*0.22};
 }
+const FITC={};
+/* حدود الرسم الفعلية بالبكسل: لا تعتمد على actualBoundingBox (غير موثوق في WebView القديم) */
+function inkBox(ch,sz0){
+ const W=Math.ceil(sz0*2.4),H=Math.ceil(sz0*2.4),c=document.createElement("canvas");c.width=W;c.height=H;
+ const x=c.getContext("2d"),ox=Math.round(sz0*.7),oy=Math.round(sz0*1.5);
+ x.textAlign="left";x.textBaseline="alphabetic";x.font=gfont(sz0);x.fillStyle="#000";x.fillText(ch,ox,oy);
+ const d=x.getImageData(0,0,W,H).data;let x0=W,x1=-1,y0=H,y1=-1;
+ for(let j=0;j<H;j++)for(let i=0;i<W;i++)if(d[(j*W+i)*4+3]>24){if(i<x0)x0=i;if(i>x1)x1=i;if(j<y0)y0=j;if(j>y1)y1=j}
+ return x1<0?null:{dx0:x0-ox,dx1:x1+1-ox,dy0:y0-oy,dy1:y1+1-oy};
+}
 function fit(ctx,ch){
- const S=st.S;let sz=S*.6;
+ const S=st.S,key=st.kind+"|"+ch+"|"+S;
+ let f=FITC[key];
+ if(!f){
+  const sz0=Math.max(40,Math.round(S*.6)),b=inkBox(ch,sz0);
+  if(b){
+   const w=b.dx1-b.dx0,h=b.dy1-b.dy0,k=Math.min(S*.62/Math.max(w,1),S*.62/Math.max(h,1));
+   f=FITC[key]={sz:sz0*k,x:S/2-k*(b.dx0+b.dx1)/2,y:S/2-k*(b.dy0+b.dy1)/2};
+  }
+ }
+ if(f){ctx.textAlign="left";ctx.textBaseline="alphabetic";ctx.font=gfont(f.sz);return [f.x,f.y]}
+ let sz=S*.6;
  ctx.textAlign="left";ctx.textBaseline="alphabetic";ctx.font=gfont(sz);
  let b=mbox(ctx.measureText(ch),sz);
  const w=b.l+b.r,h=b.a+b.d;
@@ -184,8 +204,19 @@ function skeleton(){
 }
 
 function clearCtx(ctx){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);ctx.restore()}
+function updateMini(){
+ let m=document.getElementById("wr-m");const it=cur(),b=$("wr-board");
+ if(!m&&b){m=document.createElement("canvas");m.id="wr-m";b.appendChild(m)}
+ if(!m)return;
+ if(st.level!=="free"||!it){m.style.display="none";return}
+ const S=st.S,ms=Math.round(S*.28),d=window.devicePixelRatio||1,px=Math.round(ms*d);
+ if(m.width!==px){m.width=m.height=px;m.style.width=m.style.height=ms+"px"}
+ m.style.display="block";
+ const mx=m.getContext("2d");mx.setTransform(1,0,0,1,0,0);mx.clearRect(0,0,m.width,m.height);mx.setTransform(d*ms/S,0,0,d*ms/S,0,0);
+ const p=fit(mx,it.ch);mx.fillStyle="#7f97c4";mx.fillText(it.ch,p[0],p[1]);
+}
 function drawGuide(model){
- clearCtx(gx);
+ updateMini();clearCtx(gx);
  const it=cur();if(!it)return;
  if(model){const p=fit(gx,it.ch);gx.fillStyle="rgba(255,110,110,.5)";gx.fillText(it.ch,p[0],p[1]);return}
  if(st.level==="free")return;
@@ -197,6 +228,21 @@ function drawGuide(model){
   const sk=skeleton();gx.fillStyle="#4f6fae";
   sk.dots.forEach(q=>{gx.beginPath();gx.arc(q[0],q[1],Math.max(3.5,st.S*.0125),0,6.2832);gx.fill()});
  }
+}
+/* تتبّع داخل الحرف نفسه: ما يخرج عن الشكل لا يظهر ولا يُحتسب (هامش 1.5 بكسل لئلا تُقصّ الحافة بحدّة) */
+const MASKC={};
+/* قناع الحرف (تعبئة + حافة بسيطة) يُبنى مرة ويُخزَّن؛ تطبيقه بعملية destination-in واحدة (تكرارها يأخذ التقاطع فقط) */
+function glyphMask(ch,w,S){
+ const key=st.kind+"|"+ch+"|"+S+"|"+w;let m=MASKC[key];if(m)return m;
+ m=document.createElement("canvas");m.width=m.height=w;const x=m.getContext("2d");x.setTransform(w/S,0,0,w/S,0,0);
+ const q=fit(x,ch);x.fillStyle=x.strokeStyle="#000";x.lineJoin="round";x.lineWidth=Math.max(3,S*.012);
+ x.fillText(ch,q[0],q[1]);x.strokeText(ch,q[0],q[1]);
+ return MASKC[key]=m;
+}
+function clipToGlyph(ctx,S){
+ const it=cur();if(!it||st.level==="free")return;
+ const m=glyphMask(it.ch,ctx.canvas.width,S);
+ ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation="destination-in";ctx.drawImage(m,0,0);ctx.restore();
 }
 function penW(){return Math.max(8,st.S*LEVELS[st.level].pen)}
 function strokesTo(ctx,w,S){
@@ -210,7 +256,7 @@ function strokesTo(ctx,w,S){
  });
 }
 function drawInk(){
- clearCtx(ix);strokesTo(ix,penW(),st.S);
+ clearCtx(ix);strokesTo(ix,penW(),st.S);clipToGlyph(ix,st.S);
  // في «صِلِ النقاط»: النقاط تُرسم فوق الخط دائمًا، فلا تُخفيها كتلة ولا يظن الطفل أنها «مُسحت»
  if(st.level==="dots"&&cur()){
   const sk=skeleton(),r=Math.max(3.5,st.S*.0125);
@@ -221,9 +267,9 @@ function drawInk(){
 function outsideRatio(S){
  if(st.level!=="dots"||!st.strokes.length)return 0;
  const sc=.5,N=Math.max(60,Math.round(S*sc));
- const m=mkCanvas(N),mx=m.getContext("2d");mx.scale(sc,sc);mx.fillStyle="#000";const rr=S*.07;
+ const m=mkCanvas(N),mx=m.getContext("2d");mx.scale(sc,sc);mx.fillStyle="#000";const rr=S*.05;
  skeleton().pts.forEach(q=>{mx.beginPath();mx.arc(q[0],q[1],rr,0,6.2832);mx.fill()});
- const k=mkCanvas(N),kx=k.getContext("2d");kx.scale(sc,sc);strokesTo(kx,penW(),S);
+ const k=mkCanvas(N),kx=k.getContext("2d");kx.scale(sc,sc);strokesTo(kx,penW(),S);clipToGlyph(kx,S);
  const M=mx.getImageData(0,0,N,N).data,K=kx.getImageData(0,0,N,N).data;let ink=0,out=0;
  for(let i=3;i<K.length;i+=4)if(K[i]>40){ink++;if(M[i]<=40)out++}
  return ink?out/ink:0;
@@ -256,7 +302,7 @@ function mkCanvas(S){const c=document.createElement("canvas");c.width=c.height=S
 function score(){
  const S=Math.round(st.S),it=cur();
  // تغطية: مسار القلم بسُمكه + هامش تساهل صغير
- const cov=mkCanvas(S),cx=cov.getContext("2d");strokesTo(cx,penW()+S*.035,S);
+ const cov=mkCanvas(S),cx=cov.getContext("2d");strokesTo(cx,penW()+S*.035,S);clipToGlyph(cx,S);
  const C=cx.getImageData(0,0,S,S).data;
  // حدود مسموحة للخروج: الشكل موسَّعًا قليلًا
  const dil=mkCanvas(S),dx=dil.getContext("2d"),q=fit(dx,it.ch);
@@ -310,7 +356,8 @@ function score(){
   }
   if(sI&&sO/sI>.6)extra++;
  });
- const cv=tot?hit/tot:0,sy=ink?out/ink:1;
+ const cv=tot?hit/tot:0,sy=(st.level!=="free")?0:(ink?out/ink:1);
+  if(st.level!=="free")extra=0;
  return {cover:cv,worst:worst,stray:sy,ink:ink,extra:extra,outLen:out*step,S:S,ncomp:ncomp,blob:blobCount(S)+(outsideRatio(S)>.55?1:0),outside:outsideRatio(S),gap:gap,small:Object.keys(gl.cnt).some(k=>gl.cnt[k]<bigN),pct:Math.round(100*cv*(1-sy))};
 }
 /* مكوّنات الحرف نفسه (الجسم، كل نقطة، الهمزة...) تُستخرج من رسم الحرف مهما كان المستوى */
@@ -336,8 +383,8 @@ function grade(r){
  else if(r.cover>=.62&&r.worst>=.30&&r.stray<=.45&&r.gap<=.25)s=2;
  else if(r.cover>=.40&&r.stray<=.60)s=1;
  if(r.extra>0&&s>2)s=2;
- if(r.outside>.25&&s>2)s=2;
- if(r.outside>.40&&s>1)s=1;
+ if(r.outside>.12&&s>2)s=2;
+ if(r.outside>.25&&s>1)s=1;
  return s;
 }
 function result(r){
@@ -353,7 +400,7 @@ function result(r){
  let m=msgs[s];
  if(s<3){
   if(r.blob>0)m="لا تُلوّن كتلة فوق النقاط؛ صِل النقاط بخط واحد من أول نقطة إلى آخرها";
-  else if(r.outside>.25)m="حاول أن تبقى فوق النقاط ولا تبتعد عنها كثيرًا";
+  else if(r.outside>.12)m="حاول أن تبقى فوق النقاط ولا تبتعد عنها كثيرًا";
   else if(r.extra>0)m=r.small?"هناك علامة زائدة؛ انتبه لعدد النقاط والهمزة في هذا الحرف":"هناك خط زائد خارج الشكل، حاول أن تبقى فوقه";
   else if(r.stray>.30)m="حاول أن تبقى فوق الشكل ولا تخرج منه كثيرًا";
   else if(r.gap>.10&&!(r.worst<.45&&r.small))m=lv==="trace"?"بقي جزء من الشكل بلا تلوين":"بقي جزء من النقاط بلا رسم";
