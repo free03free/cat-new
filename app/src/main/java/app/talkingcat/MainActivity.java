@@ -45,7 +45,26 @@ public class MainActivity extends Activity {
         web.setLongClickable(false);                       // منع قائمة النسخ والمشاركة والبحث عند الضغط المطوّل
         web.setHapticFeedbackEnabled(false);
         web.setOnLongClickListener(v -> true);
-        setContentView(web);
+        // يبقى المحتوى فوق شريط التنقل السفلي (أزرار الهاتف) وشريط الحالة وحافة الشاشة: نطبّق هوامش النظام على حاوية الـWebView
+        // (لا نعتمد على env(safe-area-inset-*) في الصفحة لأنها تساوي صفرًا في كثير من أجهزة WebView)
+        final android.widget.FrameLayout root = new android.widget.FrameLayout(this);
+        root.setBackgroundColor(0xFF000000);
+        root.addView(web, new android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        root.setOnApplyWindowInsetsListener((v, ins) -> {
+            int l, t, r, bt;
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets i = ins.getInsets(android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout());
+                l = i.left; t = i.top; r = i.right; bt = i.bottom;
+            } else {
+                l = ins.getSystemWindowInsetLeft(); t = ins.getSystemWindowInsetTop();
+                r = ins.getSystemWindowInsetRight(); bt = ins.getSystemWindowInsetBottom();
+            }
+            v.setPadding(l, t, r, bt);
+            return ins;
+        });
+        setContentView(root);
+        root.requestApplyInsets();
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);

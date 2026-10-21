@@ -12,8 +12,8 @@ const sylKind=CS.sylKind||(()=>"");
 function pref(k,d){try{const v=parseFloat(localStorage.getItem(k));return isFinite(v)?v:d}catch(e){return d}}
 function maxNum(){let m=parseInt(localStorage.getItem("learningMaxNumber")||"10",10);if(!isFinite(m)||m<1)m=10;return Math.min(m,100)}
 const LEVELS={
- trace:{hint:"لوّن داخل الشكل الرمادي؛ ما يخرج عنه لا يظهر، وسأشجعك عند الإتقان",pen:.055},
- dots:{hint:"صِل النقاط داخل الشكل بالترتيب؛ ما يخرج عنه لا يظهر، وسأشجعك عند الإتقان",pen:.045},
+ trace:{hint:"لوّن فوق الشكل الرمادي دون أن تخرج منه، وسأشجعك عند الإتقان",pen:.055},
+ dots:{hint:"ارسم فوق النقاط بالترتيب دون أن تبتعد عنها، وسأشجعك عند الإتقان",pen:.045},
  free:{hint:"اكتب بنفسك وانظر إلى النموذج المصغّر في الزاوية، ثم اضغط «تحقق» لترى النموذج كبيرًا",pen:.045}
 };
 const st={kind:"letters",level:"trace",idx:0,strokes:[],cur:null,S:300,modelT:0};
@@ -141,6 +141,80 @@ function fit(ctx,ch){
  sz*=k;ctx.font=gfont(sz);b=mbox(ctx.measureText(ch),sz);
  return [S/2-(b.r-b.l)/2,S/2+(b.a-b.d)/2];
 }
+
+/* ----- مباعدة نقاط الحروف (ث ش ت ق ي ة ...) لتسهل على الطفل: تُفصل النقاط عن الجسم وتُزاح عن بعضها دون المساس بالجسم ----- */
+const GM={};
+function gMask(ctx,ch,p){
+ if(st.kind==="numbers")return null;
+ const S=st.S,R=Math.round(Math.min(900,S*2)),s=R/S,font=ctx.font,key=st.kind+"|"+ch+"|"+Math.round(S)+"|"+font+"|"+p[0].toFixed(1)+"|"+p[1].toFixed(1);
+ if(key in GM)return GM[key];
+ let res=null;try{res=gBuild(ch,p,font,R,s)}catch(e){res=null}
+ GM[key]=res;return res;
+}
+function gBuild(ch,p,font,R,s){
+ const c=mkCanvas(R),x=c.getContext("2d");x.scale(s,s);x.font=font;x.textAlign="left";x.textBaseline="alphabetic";x.fillStyle="#000";x.fillText(ch,p[0],p[1]);
+ const img=x.getImageData(0,0,R,R),d=img.data,lab=new Int32Array(R*R).fill(-1),comps=[],stack=new Int32Array(R*R);
+ for(let i=0;i<R*R;i++){
+  if(lab[i]>=0||d[i*4+3]<=10)continue;
+  const id=comps.length,o={n:0,x0:R,y0:R,x1:-1,y1:-1};comps.push(o);let sp=0;stack[sp++]=i;lab[i]=id;
+  while(sp){const q=stack[--sp],qx=q%R,qy=(q-qx)/R;o.n++;if(qx<o.x0)o.x0=qx;if(qx>o.x1)o.x1=qx;if(qy<o.y0)o.y0=qy;if(qy>o.y1)o.y1=qy;
+   for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const nx=qx+dx,ny=qy+dy;if(nx<0||ny<0||nx>=R||ny>=R)continue;const j=ny*R+nx;if(lab[j]<0&&d[j*4+3]>10){lab[j]=id;stack[sp++]=j}}}
+ }
+ if(comps.length<3)return {c:c,R:R,t:{}};
+ let bi=0;comps.forEach((o,i)=>{if(o.n>comps[bi].n)bi=i});
+ const B=comps[bi],dots=[];
+ comps.forEach((o,i)=>{if(i!==bi&&o.n<B.n*.35&&Math.max(o.x1-o.x0,o.y1-o.y0)<R*.25)dots.push(i)});
+ if(dots.length<2)return {c:c,R:R,t:{}};
+ const cs=dots.map(i=>{const o=comps[i];return [(o.x0+o.x1)/2,(o.y0+o.y1)/2]});
+ const D=dots.reduce((a,i)=>a+Math.max(comps[i].x1-comps[i].x0,comps[i].y1-comps[i].y0)+1,0)/dots.length;
+ let dmin=1e9;for(let a=0;a<cs.length;a++)for(let b=a+1;b<cs.length;b++)dmin=Math.min(dmin,Math.hypot(cs[a][0]-cs[b][0],cs[a][1]-cs[b][1]));
+ const target=D*2.3;if(dmin>=target)return {c:c,R:R,t:{}};
+ const gx_=cs.reduce((a,q)=>a+q[0],0)/cs.length,gy_=cs.reduce((a,q)=>a+q[1],0)/cs.length;
+ const pad=Math.round(D*.3),mg=Math.round(R*.03);
+ const shifts=(fx,fy)=>cs.map(q=>[(q[0]-gx_)*(fx-1),(q[1]-gy_)*(fy-1)]);
+ const okShift=sh=>{
+  for(let k=0;k<dots.length;k++){
+   const o=comps[dots[k]],ax=Math.round(o.x0+sh[k][0])-pad,bx=Math.round(o.x1+sh[k][0])+pad,ay=Math.round(o.y0+sh[k][1])-pad,by=Math.round(o.y1+sh[k][1])+pad;
+   if(ax<mg||ay<mg||bx>R-mg||by>R-mg)return false;
+   for(let yy=ay;yy<=by;yy++)for(let xx=ax;xx<=bx;xx++)if(lab[yy*R+xx]===bi)return false;
+  }
+  for(let a=0;a<dots.length;a++)for(let b=a+1;b<dots.length;b++){
+   const oa=comps[dots[a]],ob=comps[dots[b]];
+   const ca=[(oa.x0+oa.x1)/2+sh[a][0],(oa.y0+oa.y1)/2+sh[a][1]],cb=[(ob.x0+ob.x1)/2+sh[b][0],(ob.y0+ob.y1)/2+sh[b][1]];
+   if(Math.hypot(ca[0]-cb[0],ca[1]-cb[1])<D*1.2)return false;
+  }
+  return true;
+ };
+ const f0=Math.min(3,target/dmin);let sh=null;
+ for(let f=f0;f>1.02&&!sh;f-=.08){
+  for(const fy of [f,1+(f-1)*.5,1+(f-1)*.2,1]){const t=shifts(f,fy);if(okShift(t)){sh=t;break}}
+ }
+ if(!sh)return {c:c,R:R,t:{}};
+ const out=mkCanvas(R),ox=out.getContext("2d"),oi=ox.createImageData(R,R),od=oi.data;
+ for(let i=0;i<R*R;i++)if(lab[i]===bi||(lab[i]>=0&&dots.indexOf(lab[i])<0)){od[i*4]=d[i*4];od[i*4+1]=d[i*4+1];od[i*4+2]=d[i*4+2];od[i*4+3]=d[i*4+3]}
+ for(let k=0;k<dots.length;k++){
+  const sx=Math.round(sh[k][0]),sy=Math.round(sh[k][1]),o=comps[dots[k]];
+  for(let yy=o.y0;yy<=o.y1;yy++)for(let xx=o.x0;xx<=o.x1;xx++){const i=yy*R+xx;if(lab[i]!==dots[k])continue;const j=(yy+sy)*R+(xx+sx);od[j*4]=d[i*4];od[j*4+1]=d[i*4+1];od[j*4+2]=d[i*4+2];od[j*4+3]=d[i*4+3]}
+ }
+ ox.putImageData(oi,0,0);
+ return {c:out,R:R,t:{}};
+}
+function gTint(m,color){
+ if(m.t[color])return m.t[color];
+ const c=mkCanvas(m.R),x=c.getContext("2d");x.drawImage(m.c,0,0);x.globalCompositeOperation="source-in";x.fillStyle=color;x.fillRect(0,0,m.R,m.R);
+ return m.t[color]=c;
+}
+function gFill(ctx,ch,p){
+ const m=gMask(ctx,ch,p);
+ if(!m){ctx.fillText(ch,p[0],p[1]);return}
+ ctx.drawImage(gTint(m,ctx.fillStyle),0,0,st.S,st.S);
+}
+function gStroke(ctx,ch,p){
+ const m=gMask(ctx,ch,p);
+ if(!m){ctx.strokeText(ch,p[0],p[1]);return}
+ const t=gTint(m,ctx.strokeStyle),r=ctx.lineWidth/2,S=st.S;
+ for(const k of [1,.75,.5,.25])for(let a=0;a<24;a++){const th=a*Math.PI/12;ctx.drawImage(t,Math.cos(th)*r*k,Math.sin(th)*r*k,S,S)}
+}
 /* ----- الهيكل المركزي للشكل (خط واحد منقّط بدل خطّي الحافة): ترقيق Zhang-Suen ثم حذف الأشواك القصيرة ----- */
 const SK={key:"",pts:[],dots:[]};
 function thin(bw,G){
@@ -190,16 +264,45 @@ function skeleton(){
  const S=st.S,it=cur(),G=Math.min(170,Math.round(S)),key=st.kind+"|"+it.ch+"|"+Math.round(S);
  if(SK.key===key)return SK;
  const c=mkCanvas(G),x=c.getContext("2d");x.scale(G/S,G/S);
- const p=fit(x,it.ch);x.fillStyle="#000";x.fillText(it.ch,p[0],p[1]);
+ const p=fit(x,it.ch);x.fillStyle="#000";gFill(x,it.ch,p);
  const d=x.getImageData(0,0,G,G).data,bw=new Uint8Array(G*G);
  for(let i=0;i<bw.length;i++)bw[i]=d[i*4+3]>127?1:0;
+ const ink0=bw.slice();
  thin(bw,G);prune(bw,G,Math.round(G*.07));
  const k=S/G,pts=[],lbl=new Int32Array(G*G).fill(-1);let nc=0;
  for(let i=0;i<bw.length;i++)if(bw[i]&&lbl[i]<0){const stack=[i];lbl[i]=nc;while(stack.length){const c0=stack.pop();for(const j of nbrs(bw,G,c0))if(lbl[j]<0){lbl[j]=nc;stack.push(j)}}nc++}
  for(let i=0;i<bw.length;i++)if(bw[i]){const gx_=i%G,gy_=(i-gx_)/G;pts.push([(gx_+.5)*k,(gy_+.5)*k,lbl[i]])}
- // نقاط متباعدة بانتظام: اختيار جشع بمسافة دنيا
- const gap=S*.058,dots=[];
- for(const q of pts){let ok=true;for(const w of dots){const dx=q[0]-w[0],dy=q[1]-w[1];if(dx*dx+dy*dy<gap*gap){ok=false;break}}if(ok)dots.push(q)}
+ /* ترميم: مناطق من الحرف ضاعت من الهيكل (بعد الترقيق أو حذف الأشواك) فتبقى بلا نقاط؛ نضيف لها نقاط من منتصف السُّمك */
+ (function(){
+  const N=G*G,INF=1e9,dBg=new Int32Array(N).fill(INF),dSk=new Int32Array(N).fill(INF),lSk=new Int32Array(N).fill(-1);
+  let q=[];for(let i=0;i<N;i++)if(!ink0[i]){dBg[i]=0;q.push(i)}
+  for(let h=0;h<q.length;h++){const i=q[h],x=i%G,y=(i-x)/G;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=G||ny>=G)continue;const j=ny*G+nx;if(dBg[j]>dBg[i]+1){dBg[j]=dBg[i]+1;q.push(j)}}}
+  q=[];for(let i=0;i<N;i++)if(bw[i]){dSk[i]=0;lSk[i]=lbl[i];q.push(i)}
+  if(!q.length)return;
+  for(let h=0;h<q.length;h++){const i=q[h],x=i%G,y=(i-x)/G;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=G||ny>=G)continue;const j=ny*G+nx;if(dSk[j]>dSk[i]+1){dSk[j]=dSk[i]+1;lSk[j]=lSk[i];q.push(j)}}}
+  for(let y=1;y<G-1;y++)for(let x=1;x<G-1;x++){
+   const i=y*G+x;if(!ink0[i]||dBg[i]<3||dSk[i]<4||dSk[i]<=dBg[i]+1)continue;
+   let ridge=true;for(let dy=-1;dy<=1&&ridge;dy++)for(let dx=-1;dx<=1;dx++)if(dBg[(y+dy)*G+x+dx]>dBg[i]){ridge=false;break}
+   if(ridge)pts.push([(x+.5)*k,(y+.5)*k,lSk[i]]);
+  }
+ })();
+ // نقاط متباعدة بانتظام لكل مكوّن على حدة: الجسم (أكبر مكوّن) بمسافة عادية، الهمزة وما يشبهها بمسافة أصغر لتظهر بشكلها، والنقطة الصغيرة علامة واحدة فقط
+ const dots=[],byc={};
+ for(const q of pts)(byc[q[2]]=byc[q[2]]||[]).push(q);
+ let bodyId=-1,bodyN=-1;Object.keys(byc).forEach(id=>{if(byc[id].length>bodyN){bodyN=byc[id].length;bodyId=id}});
+ Object.keys(byc).forEach(id=>{
+  const g=byc[id];let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+  g.forEach(q=>{x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);y0=Math.min(y0,q[1]);y1=Math.max(y1,q[1])});
+  const ext=Math.max(x1-x0,y1-y0);
+  if(id!=bodyId&&ext<=S*.045){
+   const cx=g.reduce((a,q)=>a+q[0],0)/g.length,cy=g.reduce((a,q)=>a+q[1],0)/g.length;
+   let b=g[0],bd=1e18;g.forEach(q=>{const d=(q[0]-cx)*(q[0]-cx)+(q[1]-cy)*(q[1]-cy);if(d<bd){bd=d;b=q}});
+   dots.push(b);return;
+  }
+  const gap=(id!=bodyId&&ext<S*.22)?S*.032:S*.058,mine=[];
+  for(const q of g){let ok=true;for(const w of mine){const dx=q[0]-w[0],dy=q[1]-w[1];if(dx*dx+dy*dy<gap*gap){ok=false;break}}if(ok)mine.push(q)}
+  mine.forEach(q=>dots.push(q));
+ });
  SK.key=key;SK.pts=pts;SK.dots=dots;return SK;
 }
 
@@ -213,36 +316,21 @@ function updateMini(){
  if(m.width!==px){m.width=m.height=px;m.style.width=m.style.height=ms+"px"}
  m.style.display="block";
  const mx=m.getContext("2d");mx.setTransform(1,0,0,1,0,0);mx.clearRect(0,0,m.width,m.height);mx.setTransform(d*ms/S,0,0,d*ms/S,0,0);
- const p=fit(mx,it.ch);mx.fillStyle="#7f97c4";mx.fillText(it.ch,p[0],p[1]);
+ const p=fit(mx,it.ch);mx.fillStyle="#7f97c4";gFill(mx,it.ch,p);
 }
 function drawGuide(model){
  updateMini();clearCtx(gx);
  const it=cur();if(!it)return;
- if(model){const p=fit(gx,it.ch);gx.fillStyle="rgba(255,110,110,.5)";gx.fillText(it.ch,p[0],p[1]);return}
+ if(model){const p=fit(gx,it.ch);gx.fillStyle="rgba(255,110,110,.5)";gFill(gx,it.ch,p);return}
  if(st.level==="free")return;
  const p=fit(gx,it.ch);
  if(st.level==="trace"){
-  gx.fillStyle="#dfe9fa";gx.fillText(it.ch,p[0],p[1]);
-  gx.lineWidth=2.5;gx.strokeStyle="#a9c0ea";gx.lineJoin="round";gx.strokeText(it.ch,p[0],p[1]);
+  gx.lineWidth=2.5;gx.strokeStyle="#a9c0ea";gx.lineJoin="round";gStroke(gx,it.ch,p);
+  gx.fillStyle="#dfe9fa";gFill(gx,it.ch,p);
  }else{
   const sk=skeleton();gx.fillStyle="#4f6fae";
   sk.dots.forEach(q=>{gx.beginPath();gx.arc(q[0],q[1],Math.max(3.5,st.S*.0125),0,6.2832);gx.fill()});
  }
-}
-/* تتبّع داخل الحرف نفسه: ما يخرج عن الشكل لا يظهر ولا يُحتسب (هامش 1.5 بكسل لئلا تُقصّ الحافة بحدّة) */
-const MASKC={};
-/* قناع الحرف (تعبئة + حافة بسيطة) يُبنى مرة ويُخزَّن؛ تطبيقه بعملية destination-in واحدة (تكرارها يأخذ التقاطع فقط) */
-function glyphMask(ch,w,S){
- const key=st.kind+"|"+ch+"|"+S+"|"+w;let m=MASKC[key];if(m)return m;
- m=document.createElement("canvas");m.width=m.height=w;const x=m.getContext("2d");x.setTransform(w/S,0,0,w/S,0,0);
- const q=fit(x,ch);x.fillStyle=x.strokeStyle="#000";x.lineJoin="round";x.lineWidth=Math.max(3,S*.012);
- x.fillText(ch,q[0],q[1]);x.strokeText(ch,q[0],q[1]);
- return MASKC[key]=m;
-}
-function clipToGlyph(ctx,S){
- const it=cur();if(!it||st.level==="free")return;
- const m=glyphMask(it.ch,ctx.canvas.width,S);
- ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation="destination-in";ctx.drawImage(m,0,0);ctx.restore();
 }
 function penW(){return Math.max(8,st.S*LEVELS[st.level].pen)}
 function strokesTo(ctx,w,S){
@@ -256,7 +344,7 @@ function strokesTo(ctx,w,S){
  });
 }
 function drawInk(){
- clearCtx(ix);strokesTo(ix,penW(),st.S);clipToGlyph(ix,st.S);
+ clearCtx(ix);strokesTo(ix,penW(),st.S);
  // في «صِلِ النقاط»: النقاط تُرسم فوق الخط دائمًا، فلا تُخفيها كتلة ولا يظن الطفل أنها «مُسحت»
  if(st.level==="dots"&&cur()){
   const sk=skeleton(),r=Math.max(3.5,st.S*.0125);
@@ -267,9 +355,9 @@ function drawInk(){
 function outsideRatio(S){
  if(st.level!=="dots"||!st.strokes.length)return 0;
  const sc=.5,N=Math.max(60,Math.round(S*sc));
- const m=mkCanvas(N),mx=m.getContext("2d");mx.scale(sc,sc);mx.fillStyle="#000";const rr=S*.05;
+ const m=mkCanvas(N),mx=m.getContext("2d");mx.scale(sc,sc);mx.fillStyle="#000";const rr=S*.07;
  skeleton().pts.forEach(q=>{mx.beginPath();mx.arc(q[0],q[1],rr,0,6.2832);mx.fill()});
- const k=mkCanvas(N),kx=k.getContext("2d");kx.scale(sc,sc);strokesTo(kx,penW(),S);clipToGlyph(kx,S);
+ const k=mkCanvas(N),kx=k.getContext("2d");kx.scale(sc,sc);strokesTo(kx,penW(),S);
  const M=mx.getImageData(0,0,N,N).data,K=kx.getImageData(0,0,N,N).data;let ink=0,out=0;
  for(let i=3;i<K.length;i+=4)if(K[i]>40){ink++;if(M[i]<=40)out++}
  return ink?out/ink:0;
@@ -302,17 +390,17 @@ function mkCanvas(S){const c=document.createElement("canvas");c.width=c.height=S
 function score(){
  const S=Math.round(st.S),it=cur();
  // تغطية: مسار القلم بسُمكه + هامش تساهل صغير
- const cov=mkCanvas(S),cx=cov.getContext("2d");strokesTo(cx,penW()+S*.035,S);clipToGlyph(cx,S);
+ const cov=mkCanvas(S),cx=cov.getContext("2d");strokesTo(cx,penW()+S*.035,S);
  const C=cx.getImageData(0,0,S,S).data;
  // حدود مسموحة للخروج: الشكل موسَّعًا قليلًا
  const dil=mkCanvas(S),dx=dil.getContext("2d"),q=fit(dx,it.ch);
- dx.fillStyle="#000";dx.fillText(it.ch,q[0],q[1]);dx.lineWidth=S*.12;dx.lineJoin="round";dx.strokeStyle="#000";dx.strokeText(it.ch,q[0],q[1]);
+ dx.fillStyle="#000";gFill(dx,it.ch,q);dx.lineWidth=S*.12;dx.lineJoin="round";dx.strokeStyle="#000";gStroke(dx,it.ch,q);
  const D=dx.getImageData(0,0,S,S).data;
  const at=(arr,x,y)=>arr[(Math.min(S-1,Math.max(0,y))*S+Math.min(S-1,Math.max(0,x)))*4+3];
  // عينات الهدف مع رقم المكوّن (الجسم، الهمزة، كل نقطة...)
  const samples=[];
  if(st.level==="trace"){
-  const tg=mkCanvas(S),tx=tg.getContext("2d"),p=fit(tx,it.ch);tx.fillStyle="#000";tx.fillText(it.ch,p[0],p[1]);
+  const tg=mkCanvas(S),tx=tg.getContext("2d"),p=fit(tx,it.ch);tx.fillStyle="#000";gFill(tx,it.ch,p);
   const T=tx.getImageData(0,0,S,S).data,st3=3,W=Math.ceil(S/st3),lab=new Int32Array(W*W).fill(-1);let nc=0;
   const on=(gx_,gy_)=>gx_>=0&&gy_>=0&&gx_<W&&gy_<W&&at(T,gx_*st3,gy_*st3)>40;
   for(let gy_=0;gy_<W;gy_++)for(let gx_=0;gx_<W;gx_++){
@@ -356,13 +444,13 @@ function score(){
   }
   if(sI&&sO/sI>.6)extra++;
  });
- const cv=tot?hit/tot:0,sy=(st.level!=="free")?0:(ink?out/ink:1);
-  if(st.level!=="free")extra=0;
- return {cover:cv,worst:worst,stray:sy,ink:ink,extra:extra,outLen:out*step,S:S,ncomp:ncomp,blob:blobCount(S)+(outsideRatio(S)>.55?1:0),outside:outsideRatio(S),gap:gap,small:Object.keys(gl.cnt).some(k=>gl.cnt[k]<bigN),pct:Math.round(100*cv*(1-sy))};
+ let dotsMiss=0;if(st.level==="dots")skeleton().dots.forEach(q=>{if(at(C,Math.round(q[0]),Math.round(q[1]))<=40)dotsMiss++});
+  const cv=tot?hit/tot:0,sy=ink?out/ink:1;
+ return {dotsMiss:dotsMiss,cover:cv,worst:worst,stray:sy,ink:ink,extra:extra,outLen:out*step,S:S,ncomp:ncomp,blob:blobCount(S)+(outsideRatio(S)>.55?1:0),outside:outsideRatio(S),gap:gap,small:Object.keys(gl.cnt).some(k=>gl.cnt[k]<bigN),pct:Math.round(100*cv*(1-sy))};
 }
 /* مكوّنات الحرف نفسه (الجسم، كل نقطة، الهمزة...) تُستخرج من رسم الحرف مهما كان المستوى */
 function glyphComps(S,it){
- const tg=mkCanvas(S),tx=tg.getContext("2d"),p=fit(tx,it.ch);tx.fillStyle="#000";tx.fillText(it.ch,p[0],p[1]);
+ const tg=mkCanvas(S),tx=tg.getContext("2d"),p=fit(tx,it.ch);tx.fillStyle="#000";gFill(tx,it.ch,p);
  const T=tx.getImageData(0,0,S,S).data,k=3,W=Math.ceil(S/k),lab=new Int32Array(W*W).fill(-1);let nc=0;
  const on=(a,b)=>a>=0&&b>=0&&a<W&&b<W&&T[(Math.min(S-1,b*k)*S+Math.min(S-1,a*k))*4+3]>40;
  for(let b=0;b<W;b++)for(let a=0;a<W;a++){
@@ -383,8 +471,9 @@ function grade(r){
  else if(r.cover>=.62&&r.worst>=.30&&r.stray<=.45&&r.gap<=.25)s=2;
  else if(r.cover>=.40&&r.stray<=.60)s=1;
  if(r.extra>0&&s>2)s=2;
- if(r.outside>.12&&s>2)s=2;
- if(r.outside>.25&&s>1)s=1;
+ if(r.dotsMiss>0)s=Math.min(s,r.dotsMiss>=3?1:2);
+ if(r.outside>.25&&s>2)s=2;
+ if(r.outside>.40&&s>1)s=1;
  return s;
 }
 function result(r){
@@ -399,8 +488,9 @@ function result(r){
  ];
  let m=msgs[s];
  if(s<3){
-  if(r.blob>0)m="لا تُلوّن كتلة فوق النقاط؛ صِل النقاط بخط واحد من أول نقطة إلى آخرها";
-  else if(r.outside>.12)m="حاول أن تبقى فوق النقاط ولا تبتعد عنها كثيرًا";
+  if(r.blob===0&&r.dotsMiss>0&&r.outside<=.25&&r.extra===0)m="بقيت "+(r.dotsMiss===1?"نقطة واحدة":"نقاط")+" لم تصل إليها؛ صِل كل النقاط الظاهرة";
+  else if(r.blob>0)m="لا تُلوّن كتلة فوق النقاط؛ صِل النقاط بخط واحد من أول نقطة إلى آخرها";
+  else if(r.outside>.25)m="حاول أن تبقى فوق النقاط ولا تبتعد عنها كثيرًا";
   else if(r.extra>0)m=r.small?"هناك علامة زائدة؛ انتبه لعدد النقاط والهمزة في هذا الحرف":"هناك خط زائد خارج الشكل، حاول أن تبقى فوقه";
   else if(r.stray>.30)m="حاول أن تبقى فوق الشكل ولا تخرج منه كثيرًا";
   else if(r.gap>.10&&!(r.worst<.45&&r.small))m=lv==="trace"?"بقي جزء من الشكل بلا تلوين":"بقي جزء من النقاط بلا رسم";
