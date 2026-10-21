@@ -255,7 +255,7 @@ function sampleStroke(pts,step){
   return out;
 }
 
-const MSK={key:"",o:null};
+const MSK={key:"",o:null},MSF={key:"",o:null};
 function modelSkel(ch,S){
  const key=ch+"|"+Math.round(S);if(MSK.key===key)return MSK.o;
  const M=LP[ch];if(!M)return null;
@@ -297,7 +297,7 @@ function zoneHit(ch,x,y,S){
  return false;
 }
 /* ===== تصحيحات النقاط من لقطات المستخدم (إحداثيات نسبية من اللوحة S): del=[x,y,نصف القطر] نقطة تُحذف (كانت مغطاة بالبرتقالي)، add=[x,y] نقطة ناقصة تُضاف (كانت نقطة زرقاء كبيرة) ===== */
-const FIX={"س":{"add":[[0.4811,0.4284]]},"ش":{"del":[[0.4281,0.5173,0.02]],"add":[[0.4786,0.5081],[0.4718,0.5618]]},"ض":{"add":[[0.7741,0.4588]]},"ط":{"add":[[0.345,0.2292],[0.3749,0.3032],[0.2582,0.6868]]},"ظ":{"add":[[0.3314,0.1966],[0.3473,0.2981],[0.256,0.6989]]},"ف":{"add":[[0.5882,0.5014]]},"ق":{"add":[[0.469,0.4432]]},"م":{"add":[[0.3875,0.3109],[0.3827,0.3782],[0.4001,0.4327]]}};
+const FIX={"س":{"add":[[0.4811,0.4284]]},"ش":{"del":[[0.4281,0.5173,0.02]],"add":[[0.4786,0.5081],[0.4718,0.5618]]},"ض":{"add":[[0.7741,0.4588]]},"ط":{"add":[[0.345,0.2292],[0.3749,0.3032],[0.2582,0.6868]]},"ظ":{"add":[[0.3314,0.1966],[0.3473,0.2981],[0.256,0.6989]]},"ف":{"add":[[0.5882,0.5014]]},"ق":{"add":[[0.469,0.4432]]},"م":{"add":[[0.3875,0.3109],[0.3827,0.3782],[0.4001,0.4327]]},"ب":{"add":[[0.757,0.299]]},"ت":{"add":[[0.7479,0.4779]]},"خ":{"add":[[0.3793,0.3912]]},"ص":{"del":[[0.4123,0.4544,0.02]],"add":[[0.7868,0.3861]]},"ر":{"del":[[0.683,0.18,0.045],[0.702,0.243,0.045],[0.701,0.299,0.045]]}};
 function applyFix(ch,pts,dots,S){
  const f=FIX[ch];if(!f)return [pts,dots];
  let P=pts,D=dots;
@@ -416,7 +416,10 @@ function orderedDots(g,k,gap){
  return mine;
 }
 function skeleton(){
- if(st.kind==="letters"&&LP[cur().ch]){const mk=modelSkel(cur().ch,st.S);if(mk)return mk}
+ if(st.kind==="letters"&&LP[cur().ch]){const mk=modelSkel(cur().ch,st.S);if(mk){
+  const kk=cur().ch+"|"+Math.round(st.S);
+  if(MSF.key!==kk){const r=applyFix(cur().ch,mk.pts,mk.dots,st.S);MSF.key=kk;MSF.o={strokes:mk.strokes,pts:r[0],dots:r[1],marks:mk.marks}}
+  return MSF.o}}
  const S=st.S,it=cur(),G=Math.min(190,Math.round(S)),key=st.kind+"|"+it.ch+"|"+Math.round(S);
  if(SK.key===key)return SK;
  const c=mkCanvas(G),x=c.getContext("2d");x.scale(G/S,G/S);
