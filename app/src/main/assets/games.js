@@ -206,6 +206,14 @@ body.gm-open{overflow:hidden}
 .pz-peek.on{opacity:1}
 .pz-bar{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;flex:none}
 .pz-bar button{padding:9px 14px;font-size:15px}
+/* تخطيط مدمج للأحجية: نستعيد الارتفاع الضائع (مساحة القط العلوية) ليكبر اللوح ويتناسق مع العرض */
+#gm-screen.pzm .gms-top{row-gap:6px}
+#gm-screen.pzm .gms-prog{margin:8px 2px 10px}
+#gm-screen.pzm .gms-stage{padding-top:0}
+#gm-screen.pzm #pz{gap:10px}
+#gm-screen.pzm .pz-info{padding-left:68px;box-sizing:border-box}
+#gm-screen.pzm .pz-bar{gap:6px}
+#gm-screen.pzm .pz-bar button{padding:9px 11px;font-size:14px}
 .pz-stars{font-size:38px;letter-spacing:4px;color:#ffe66d;direction:ltr;text-shadow:0 2px 0 rgba(0,0,0,.25);flex:none}
 /* ===== هوية جديدة: دفتر ملصقات + أزرار حلوى (تُلغي/تُكمل ما قبلها) ===== */
 #gm-screen{background:radial-gradient(rgba(255,255,255,.16) 3px,transparent 3.5px) 0 0/30px 30px,radial-gradient(rgba(255,255,255,.1) 3px,transparent 3.5px) 15px 15px/30px 30px,linear-gradient(160deg,var(--bg1,var(--c1,#ff9a5a)),var(--bg2,var(--c2,#f2506e)))}
@@ -321,7 +329,7 @@ async function countAloud(){
  }
 }
 function start(kind){
- readPrefs();pzCleanup();
+ readPrefs();pzCleanup();scr.classList.remove("pzm");
  if(kind==="jig"||kind==="asm"){pzOpen(kind);return}
  gm={kind:kind,round:0,score:0,last:-1,locked:false,tries:0,t:0,count:false,mute:false,dir:"",act:0};
  const g=GAMES[kind];
@@ -475,7 +483,7 @@ async function pzImage(pic,cols,rows,hue,alt){
  return c.toDataURL("image/png");
 }
 function pzOpen(kind){
- readPrefs();
+ readPrefs();scr.classList.add("pzm");
  gm={kind:kind,round:0,score:0,last:-1,locked:false,tries:0,t:0,count:false,mute:true,dir:"",act:0,pz:true};
  const g=GAMES[kind];
  scr.style.setProperty("--c1",g.c1);scr.style.setProperty("--c2",g.c2);scr.style.setProperty("--bg1",g.b1||g.c1);scr.style.setProperty("--bg2",g.b2||g.c2);
@@ -539,22 +547,24 @@ async function pzStart(L){
  o.appendChild(bar);
  /* نقيس الارتفاع الفعلي: نضع لوحة وصينية تجريبيتين ونصغّر المربع حتى يظهر آخر زر بالكامل فوق حافة الشاشة
     (فوق شريط التنقل)، على أي هاتف أو تابلت. العرض: نستغل عرض الشاشة كله، والارتفاع هو الحدّ الفاصل. */
- const GAP=12;
  const W=Math.min(innerWidth-32,520);
  const lim=()=>{const r=scr.getBoundingClientRect(),cs=getComputedStyle(scr);return r.bottom-(parseFloat(cs.paddingBottom)||0)-2};
- const psOf=t=>{const trayW=Math.min(innerWidth-32,520),perRow=Math.ceil(n/2);return Math.max(40,Math.min(Math.floor(t*0.9),Math.floor((trayW-16-(perRow-1)*8)/perRow)))};
+ /* الصينية بصفّ واحد أو صفّين بعرض محسوب بدقة (فلا يقفز ارتفاعها فجأة ويضيع جزء من الشاشة) */
+ const trayLay=(t,k)=>{const perRow=Math.ceil(n/k),maxW=W-12,ps=Math.max(36,Math.min(Math.floor(t*0.9),Math.floor((maxW-(perRow-1)*8)/perRow)));return{perRow:perRow,ps:ps,w:perRow*ps+(perRow-1)*8+12}};
  const pb=document.createElement("div");pb.style.cssText="flex:none";
  let pt=null;
  o.insertBefore(pb,bar);
- if(asm){pt=document.createElement("div");pt.className="pz-tray";o.insertBefore(pt,bar);
+ if(asm){pt=document.createElement("div");pt.className="pz-tray";pt.style.boxSizing="border-box";o.insertBefore(pt,bar);
   for(let i=0;i<n;i++){const d=document.createElement("div");d.className="pz-p";pt.appendChild(d)}}
- const probe=t=>{
+ const probe=(t,k)=>{
   pb.style.width=t*cols+"px";pb.style.height=t*rows+"px";
-  if(pt){const ps=psOf(t);[].slice.call(pt.children).forEach(d=>{d.style.width=ps+"px";d.style.height=ps+"px"})}
+  if(pt){const L=trayLay(t,k);pt.style.width=L.w+"px";[].slice.call(pt.children).forEach(d=>{d.style.width=L.ps+"px";d.style.height=L.ps+"px"})}
   return bar.getBoundingClientRect().bottom-lim();
  };
- let tile=Math.max(36,Math.floor(W/cols));
- while(tile>36&&probe(tile)>0)tile--;
+ const best=k=>{let t=Math.max(36,Math.floor(W/cols));while(t>36&&probe(t,k)>0)t--;return t};
+ let tile,trayK=2;
+ if(asm){const t1=best(1),t2=best(2);if(t1>t2){tile=t1;trayK=1}else{tile=t2;trayK=2}}
+ else tile=best(1);
  o.removeChild(pb);if(pt)o.removeChild(pt);
  tile=Math.max(36,tile);
  pz={cols:cols,rows:rows,n:n,total:asm?n:n-1,tile:tile,asm:asm,placed:0,moves:0,errors:0,owner:[],filled:[],board:null,tray:null,et:null,place:null,bar:bar};
@@ -587,7 +597,8 @@ async function pzStart(L){
   for(let id=0;id<n;id++){const s=document.createElement("div");s.className="pz-slot";s.dataset.id=id;s.style.cssText="width:"+tile+"px;height:"+tile+"px";place(s,id);board.appendChild(s)}
   board.appendChild(peek);o.insertBefore(board,bar);
   const tray=document.createElement("div");tray.className="pz-tray";pz.tray=tray;
-  const ps=psOf(tile);
+  const TL=trayLay(tile,trayK),ps=TL.ps;
+  tray.style.width=TL.w+"px";tray.style.boxSizing="border-box";
   shuffle(Array.apply(null,Array(n)).map((_,i)=>i)).forEach(id=>{
    const p={id:id,placed:false,tries:0,el:document.createElement("div")};
    p.el.className="pz-p";p.el.style.cssText="width:"+ps+"px;height:"+ps+"px;"+pzBg(id,cols,rows);
@@ -715,7 +726,7 @@ function pzEnd(stars){
 }
 
 function closeGame(){
- cancelWait();pzCleanup();gm=null;scr.hidden=true;document.body.classList.remove("gm-open");
+ cancelWait();pzCleanup();scr.classList.remove("pzm");gm=null;scr.hidden=true;document.body.classList.remove("gm-open");
  try{if(window.TomNative&&TomNative.stop)TomNative.stop()}catch(e){}
  refreshHub();
 }
