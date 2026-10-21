@@ -518,8 +518,6 @@ async function pzStart(L){
  const a=++gm.act;gm.locked=false;gm.letter=L;
  const lv=PZ_LV[pzLevel()],cols=lv.c,rows=lv.r,n=cols*rows,asm=gm.kind==="asm";
  const e=nextPic(L);gm.word=e[0];
- const W=Math.min(innerWidth-40,380),Hmax=innerHeight*(asm?0.36:0.47);
- const tile=Math.floor(Math.min(W/cols,Hmax/rows));
  o.textContent="";setMascot("😺");
  const url=await pzImage(e[1],cols,rows,[205,225,250,275,170,190][L%6],letters[L][0]);
  if(!gm||gm.act!==a||!$("pz"))return;
@@ -532,11 +530,29 @@ async function pzStart(L){
  const lt=document.createElement("span");lt.className="pz-lt";lt.textContent=letters[L][0];
  const wd=document.createElement("span");wd.className="pz-wd";wd.textContent=gm.word;
  info.appendChild(lt);info.appendChild(thumb);info.appendChild(wd);o.appendChild(info);
- pz={cols:cols,rows:rows,n:n,total:asm?n:n-1,tile:tile,asm:asm,placed:0,moves:0,errors:0,owner:[],filled:[],board:null,tray:null,et:null,place:null};
+ const peek=document.createElement("div");peek.className="pz-peek";
+ const bar=document.createElement("div");bar.className="pz-bar";
+ const mk=(t,f)=>{const b=document.createElement("button");b.type="button";b.textContent=t;b.onclick=f;bar.appendChild(b);return b};
+ mk("👁️ شاهد الصورة",()=>{peek.classList.add("on");setTimeout(()=>peek.classList.remove("on"),1800)});
+ mk("🔊 الكلمة",()=>{const w=wordArgsW(gm.word);say(w[0],w[1])});
+ mk("🔤 حرف آخر",()=>pzPick());
+ o.appendChild(bar);
+ /* نقيس المساحة الفعلية المتاحة (بعد خصم شريط النظام والرأس والصف العلوي والأزرار) بدل نسبة ثابتة من ارتفاع الشاشة،
+    فلا يُقصّ أي جزء تحت شريط التنقل أو على التابلت */
+ const GAP=12,avail=o.clientHeight-info.offsetHeight-bar.offsetHeight-GAP*2-16;
+ const W=Math.min(innerWidth-40,380);
+ let tile=Math.floor(Math.min(W/cols,innerHeight*(asm?0.36:0.47)/rows));
+ const need=t=>{
+  if(!asm)return rows*t;
+  const ps=Math.max(48,Math.floor(t*0.9));
+  return rows*t+GAP+2*ps+8+20;
+ };
+ if(avail>0){while(tile>36&&need(tile)>avail)tile--}
+ tile=Math.max(36,tile);
+ pz={cols:cols,rows:rows,n:n,total:asm?n:n-1,tile:tile,asm:asm,placed:0,moves:0,errors:0,owner:[],filled:[],board:null,tray:null,et:null,place:null,bar:bar};
  const board=document.createElement("div");board.className="pz-board"+(asm&&pzLevel()===0?" ghost":"");
  board.style.width=tile*cols+"px";board.style.height=tile*rows+"px";
  pz.board=board;
- const peek=document.createElement("div");peek.className="pz-peek";
  const place=(el,pos)=>{el.style.left=(pos%cols)*tile+"px";el.style.top=Math.floor(pos/cols)*tile+"px"};
  if(!asm){
   /* ترتيب: لغز منزلق — خانة فارغة واحدة (آخر مربع)، ويُحرَّك المربع المجاور لها بلمسة أو سحبة نحوها حتى تعود الصورة */
@@ -557,11 +573,11 @@ async function pzStart(L){
    if(id===E){pz.et=t;t.el.classList.add("pz-empty")}
    else{pzTapJig(t);if(id===pos){t.el.classList.add("lock");pz.placed++}}
   });
-  board.appendChild(peek);o.appendChild(board);
+  board.appendChild(peek);o.insertBefore(board,bar);
  }else{
   /* تركيب: لوحة فارغة بخانات، والقطع في صينية تحتها */
   for(let id=0;id<n;id++){const s=document.createElement("div");s.className="pz-slot";s.dataset.id=id;s.style.cssText="width:"+tile+"px;height:"+tile+"px";place(s,id);board.appendChild(s)}
-  board.appendChild(peek);o.appendChild(board);
+  board.appendChild(peek);o.insertBefore(board,bar);
   const tray=document.createElement("div");tray.className="pz-tray";pz.tray=tray;
   const trayW=Math.min(innerWidth-32,420);
   const perRow=Math.ceil(n/2);
@@ -571,14 +587,8 @@ async function pzStart(L){
    p.el.className="pz-p";p.el.style.cssText="width:"+ps+"px;height:"+ps+"px;"+pzBg(id,cols,rows);
    tray.appendChild(p.el);pzDragPiece(p,place);
   });
-  o.appendChild(tray);
+  o.insertBefore(tray,bar);
  }
- const bar=document.createElement("div");bar.className="pz-bar";pz.bar=bar;
- const mk=(t,f)=>{const b=document.createElement("button");b.type="button";b.textContent=t;b.onclick=f;bar.appendChild(b);return b};
- mk("👁️ شاهد الصورة",()=>{peek.classList.add("on");setTimeout(()=>peek.classList.remove("on"),1800)});
- mk("🔊 الكلمة",()=>{const w=wordArgsW(gm.word);say(w[0],w[1])});
- mk("🔤 حرف آخر",()=>pzPick());
- o.appendChild(bar);
  pzProgress();
  setTimeout(()=>{if(gm&&gm.act===a&&!gm.locked){const w=wordArgsW(gm.word);say(w[0],w[1])}},350);
  if(!asm&&pz.placed===pz.total)pzWin();
