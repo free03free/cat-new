@@ -106,28 +106,39 @@ maybe();
 (function(){
 var IDS=[["learning-volume-level","مستوى الصوت",function(v){return Math.round(v)+"%"}],["speech-speed","سرعة النطق",function(v){return (+v).toFixed(2)}]];
 var bar=null,pending=null,hintT=null;
+var wrap=null;
 function mkBar(){
- if(bar)return bar;bar=document.createElement("div");bar.id="chg-bar";bar.hidden=true;
- bar.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:92px;z-index:100000;width:min(92vw,440px);box-sizing:border-box;background:#3b2a1c;color:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 8px 24px rgba(0,0,0,.35);font:700 15px/1.6 system-ui,sans-serif;display:flex;align-items:center;gap:10px;direction:rtl";
- bar.innerHTML='<span id="chg-txt" style="flex:1"></span><button id="chg-ok" type="button" style="border:0;border-radius:12px;padding:9px 14px;font:800 14px system-ui;background:#2e9c4a;color:#fff">تأكيد</button><button id="chg-undo" type="button" style="border:0;border-radius:12px;padding:9px 14px;font:800 14px system-ui;background:#fff;color:#7a3b00">تراجع</button>';
- document.body.appendChild(bar);
+ if(wrap)return bar;
+ /* حاوية بعرض الشاشة تُوسِّط اللافتة؛ بلا min() ولا gap (غير مدعومين في WebView القديم) */
+ wrap=document.createElement("div");wrap.id="chg-wrap";
+ wrap.style.cssText="position:fixed;left:0;right:0;bottom:96px;z-index:100000;display:none;justify-content:center;pointer-events:none;padding:0 12px;box-sizing:border-box";
+ bar=document.createElement("div");bar.id="chg-bar";
+ bar.style.cssText="pointer-events:auto;width:100%;max-width:440px;box-sizing:border-box;background:#3b2a1c;color:#fff;border-radius:18px;padding:16px 14px 14px;box-shadow:0 8px 24px rgba(0,0,0,.35);font-family:system-ui,sans-serif;direction:rtl;text-align:center";
+ bar.innerHTML='<div id="chg-txt" style="font-weight:700;font-size:17px;line-height:1.6;margin-bottom:12px"></div>'+
+  '<div id="chg-btns" style="display:flex;justify-content:center">'+
+  '<button id="chg-ok" type="button" style="border:0;border-radius:14px;padding:11px 0;width:42%;margin:0 6px;font-weight:800;font-size:16px;background:#2e9c4a;color:#fff">تأكيد</button>'+
+  '<button id="chg-undo" type="button" style="border:0;border-radius:14px;padding:11px 0;width:42%;margin:0 6px;font-weight:800;font-size:16px;background:#fff;color:#7a3b00">تراجع</button></div>';
+ wrap.appendChild(bar);document.body.appendChild(wrap);
  bar.querySelector("#chg-ok").onclick=function(){pending=null;hide()};
  bar.querySelector("#chg-undo").onclick=function(){revert();hide()};
  return bar;
 }
-function hide(){if(bar)bar.hidden=true;clearTimeout(hintT)}
-function setVal(el,v){el.value=v;el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}))}
-function revert(){if(!pending)return;setVal(pending.el,pending.old);pending=null}
+function show(){if(wrap)wrap.style.display="flex"}
+function hide(){if(wrap)wrap.style.display="none";clearTimeout(hintT)}
+function btns(on){bar.querySelector("#chg-btns").style.display=on?"flex":"none"}
 function ask(item,el,old){
  if(pending&&pending.el!==el)pending=null;            // تغيير سابق لشريط آخر يُعدّ مؤكَّدًا
  if(!pending)pending={el:el,old:old};
- var b=mkBar();b.querySelector("#chg-txt").textContent="تغيير "+item[1]+" إلى "+item[2](el.value)+"؟";
- b.querySelector("#chg-ok").style.display=b.querySelector("#chg-undo").style.display="";b.hidden=false;clearTimeout(hintT);
+ mkBar();bar.querySelector("#chg-txt").textContent="تغيير "+item[1]+" إلى "+item[2](el.value)+"؟";
+ btns(true);show();clearTimeout(hintT);
 }
 function hint(){
- if(pending)return;var b=mkBar();b.querySelector("#chg-txt").textContent="اسحب المؤشر لتغيير القيمة (اللمس وحده لا يغيّرها)";
- b.querySelector("#chg-ok").style.display=b.querySelector("#chg-undo").style.display="none";b.hidden=false;clearTimeout(hintT);hintT=setTimeout(function(){if(!pending)hide()},2200);
+ if(pending)return;mkBar();bar.querySelector("#chg-txt").textContent="اسحب المؤشر لتغيير القيمة (اللمس وحده لا يغيّرها)";
+ bar.querySelector("#chg-txt").style.marginBottom="0";btns(false);show();clearTimeout(hintT);
+ hintT=setTimeout(function(){if(!pending){hide();bar.querySelector("#chg-txt").style.marginBottom="12px"}},2200);
 }
+function setVal(el,v){el.value=v;el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}))}
+function revert(){if(!pending)return;setVal(pending.el,pending.old);pending=null}
 function guard(item){
  var el=document.getElementById(item[0]);if(!el)return;
  var lab=el.closest("label")||el.parentNode,st=null;
