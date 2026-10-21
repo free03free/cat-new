@@ -553,7 +553,10 @@ async function pzStart(L){
  const trayLay=(t,k)=>{const perRow=Math.ceil(n/k),maxW=W-12,ps=Math.max(36,Math.min(Math.floor(t*0.9),Math.floor((maxW-(perRow-1)*8)/perRow)));return{perRow:perRow,ps:ps,w:perRow*ps+(perRow-1)*8+12}};
  const pb=document.createElement("div");pb.style.cssText="flex:none";
  let pt=null;
- o.insertBefore(pb,bar);
+ /* ترتيب: نحجز مكان صف النجوم (يظهر عند الفوز) كي لا تُدفع الأزرار خارج الشاشة */
+ let stRes=null;
+ if(!asm){stRes=document.createElement("div");stRes.className="pz-stars";stRes.textContent="★★★";stRes.style.visibility="hidden";stRes.dataset.res="1";o.insertBefore(stRes,bar)}
+ o.insertBefore(pb,stRes||bar);
  if(asm){pt=document.createElement("div");pt.className="pz-tray";pt.style.boxSizing="border-box";o.insertBefore(pt,bar);
   for(let i=0;i<n;i++){const d=document.createElement("div");d.className="pz-p";pt.appendChild(d)}}
  const probe=(t,k)=>{
@@ -591,7 +594,7 @@ async function pzStart(L){
    if(id===E){pz.et=t;t.el.classList.add("pz-empty")}
    else{pzTapJig(t);if(id===pos){t.el.classList.add("lock");pz.placed++}}
   });
-  board.appendChild(peek);o.insertBefore(board,bar);
+  board.appendChild(peek);o.insertBefore(board,stRes||bar);
  }else{
   /* تركيب: لوحة فارغة بخانات، والقطع في صينية تحتها */
   for(let id=0;id<n;id++){const s=document.createElement("div");s.className="pz-slot";s.dataset.id=id;s.style.cssText="width:"+tile+"px;height:"+tile+"px";place(s,id);board.appendChild(s)}
@@ -716,6 +719,7 @@ function pzEnd(stars){
  const o=$("pz");if(!o||!pz)return;
  if(pz.tray)pz.tray.remove();
  pz.bar.textContent="";
+ const old=o.querySelector('.pz-stars[data-res="1"]');if(old)old.remove();
  const st=document.createElement("div");st.className="pz-stars";st.textContent=starsText(stars);
  o.insertBefore(st,pz.bar);
  const mk=(t,f)=>{const b=document.createElement("button");b.type="button";b.textContent=t;b.onclick=f;pz.bar.appendChild(b)};
