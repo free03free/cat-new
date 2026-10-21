@@ -205,7 +205,13 @@ body.gm-open{overflow:hidden}
 .pz-peek{position:absolute;top:0;right:0;bottom:0;left:0;border-radius:14px;background-image:var(--img);background-size:100% 100%;opacity:0;pointer-events:none;transition:opacity .25s;z-index:30}
 .pz-peek.on{opacity:1}
 .pz-bar{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;flex:none}
-.pz-bar button{padding:9px 14px;font-size:15px}
+.pz-bar button{padding:8px 9px;font-size:13px}
+.pz-bar{gap:6px}
+.pz-mid{display:flex;align-items:flex-start;justify-content:center;gap:12px;width:100%;flex:none}
+.pz-bar.side{flex-direction:column;flex-wrap:nowrap;width:112px;align-self:center;gap:10px}
+.pz-bar.side button{width:100%;white-space:normal;line-height:1.25;padding:10px 6px;font-size:14px}
+.pz-mid .pz-tray{width:auto;padding:10px 6px;box-sizing:border-box}
+#pz{margin-top:-18px}
 .pz-stars{font-size:38px;letter-spacing:4px;color:#ffe66d;direction:ltr;text-shadow:0 2px 0 rgba(0,0,0,.25);flex:none}
 /* ===== هوية جديدة: دفتر ملصقات + أزرار حلوى (تُلغي/تُكمل ما قبلها) ===== */
 #gm-screen{background:radial-gradient(rgba(255,255,255,.16) 3px,transparent 3.5px) 0 0/30px 30px,radial-gradient(rgba(255,255,255,.1) 3px,transparent 3.5px) 15px 15px/30px 30px,linear-gradient(160deg,var(--bg1,var(--c1,#ff9a5a)),var(--bg2,var(--c2,#f2506e)))}
@@ -539,16 +545,17 @@ async function pzStart(L){
  o.appendChild(bar);
  /* نقيس المساحة الفعلية المتاحة (بعد خصم شريط النظام والرأس والصف العلوي والأزرار) بدل نسبة ثابتة من ارتفاع الشاشة،
     فلا يُقصّ أي جزء تحت شريط التنقل أو على التابلت */
- const GAP=12,avail=o.clientHeight-info.offsetHeight-bar.offsetHeight-GAP*2-16;
- const W=Math.min(innerWidth-40,380);
- let tile=Math.floor(Math.min(W/cols,innerHeight*(asm?0.36:0.47)/rows));
- const need=t=>{
-  if(!asm)return rows*t;
-  const ps=Math.max(48,Math.floor(t*0.9));
-  return rows*t+GAP+2*ps+8+20;
- };
- if(avail>0){while(tile>36&&need(tile)>avail)tile--}
+ /* التخطيط: اللوحة في الوسط، وبجانبها (لا تحتها) الأزرار في «الترتيب» أو صينية القطع في «التركيب»، فنستغل عرض الشاشة */
+ const GAP=12,SIDE=112,TW=Math.min(innerWidth-32,560);
+ const availH=o.clientHeight-info.offsetHeight-GAP-10-(asm?bar.offsetHeight+GAP:0);
+ const perT=n<=6?2:3,rowsT=Math.ceil(n/perT);
+ const psFor=t=>Math.min(Math.floor(t*0.9),Math.floor((rows*t-20+8)/rowsT-8));
+ const trayWFor=ps=>perT*ps+(perT-1)*8+12;
+ let tile=Math.floor(Math.min(availH/rows,(TW-GAP-(asm?trayWFor(48):SIDE))/cols));
+ if(asm){while(tile>36&&(cols*tile+GAP+trayWFor(Math.max(40,psFor(tile)))>TW))tile--}
  tile=Math.max(36,tile);
+ const mid=document.createElement("div");mid.className="pz-mid";
+ if(asm)o.insertBefore(mid,bar);else o.appendChild(mid);
  pz={cols:cols,rows:rows,n:n,total:asm?n:n-1,tile:tile,asm:asm,placed:0,moves:0,errors:0,owner:[],filled:[],board:null,tray:null,et:null,place:null,bar:bar};
  const board=document.createElement("div");board.className="pz-board"+(asm&&pzLevel()===0?" ghost":"");
  board.style.width=tile*cols+"px";board.style.height=tile*rows+"px";
@@ -573,21 +580,21 @@ async function pzStart(L){
    if(id===E){pz.et=t;t.el.classList.add("pz-empty")}
    else{pzTapJig(t);if(id===pos){t.el.classList.add("lock");pz.placed++}}
   });
-  board.appendChild(peek);o.insertBefore(board,bar);
+  board.appendChild(peek);mid.appendChild(board);
+  bar.classList.add("side");mid.appendChild(bar);
  }else{
   /* تركيب: لوحة فارغة بخانات، والقطع في صينية تحتها */
   for(let id=0;id<n;id++){const s=document.createElement("div");s.className="pz-slot";s.dataset.id=id;s.style.cssText="width:"+tile+"px;height:"+tile+"px";place(s,id);board.appendChild(s)}
-  board.appendChild(peek);o.insertBefore(board,bar);
+  board.appendChild(peek);mid.appendChild(board);
   const tray=document.createElement("div");tray.className="pz-tray";pz.tray=tray;
-  const trayW=Math.min(innerWidth-32,420);
-  const perRow=Math.ceil(n/2);
-  const ps=Math.max(48,Math.min(Math.floor(tile*0.9),Math.floor((trayW-16-(perRow-1)*8)/perRow)));
+  const ps=Math.max(40,psFor(tile));
+  tray.style.width=trayWFor(ps)+"px";tray.style.minHeight=tile*rows+"px";
   shuffle(Array.apply(null,Array(n)).map((_,i)=>i)).forEach(id=>{
    const p={id:id,placed:false,tries:0,el:document.createElement("div")};
    p.el.className="pz-p";p.el.style.cssText="width:"+ps+"px;height:"+ps+"px;"+pzBg(id,cols,rows);
    tray.appendChild(p.el);pzDragPiece(p,place);
   });
-  o.insertBefore(tray,bar);
+  mid.appendChild(tray);
  }
  pzProgress();
  setTimeout(()=>{if(gm&&gm.act===a&&!gm.locked){const w=wordArgsW(gm.word);say(w[0],w[1])}},350);
@@ -693,6 +700,7 @@ async function pzWin(){
 function pzEnd(stars){
  const o=$("pz");if(!o||!pz)return;
  if(pz.tray)pz.tray.remove();
+ if(pz.bar.parentNode!==o){pz.bar.classList.remove("side");o.appendChild(pz.bar)}
  pz.bar.textContent="";
  const st=document.createElement("div");st.className="pz-stars";st.textContent=starsText(stars);
  o.insertBefore(st,pz.bar);
