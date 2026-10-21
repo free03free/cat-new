@@ -167,27 +167,34 @@ function gBuild(ch,p,font,R,s){
  if(dots.length<2)return {c:c,R:R,t:{}};
  const cs=dots.map(i=>{const o=comps[i];return [(o.x0+o.x1)/2,(o.y0+o.y1)/2]});
  const D=dots.reduce((a,i)=>a+Math.max(comps[i].x1-comps[i].x0,comps[i].y1-comps[i].y0)+1,0)/dots.length;
- let dmin=1e9;for(let a=0;a<cs.length;a++)for(let b=a+1;b<cs.length;b++)dmin=Math.min(dmin,Math.hypot(cs[a][0]-cs[b][0],cs[a][1]-cs[b][1]));
- const target=D*2.3;if(dmin>=target)return {c:c,R:R,t:{}};
- const gx_=cs.reduce((a,q)=>a+q[0],0)/cs.length,gy_=cs.reduce((a,q)=>a+q[1],0)/cs.length;
- const pad=Math.round(D*.3),mg=Math.round(R*.03);
- const shifts=(fx,fy)=>cs.map(q=>[(q[0]-gx_)*(fx-1),(q[1]-gy_)*(fy-1)]);
+ const n=dots.length,pad=Math.round(D*.18),mg=Math.round(R*.03);
+ const cxm=cs.reduce((a,q)=>a+q[0],0)/n,cym=cs.reduce((a,q)=>a+q[1],0)/n;
+ const bcx=(B.x0+B.x1)/2,bcy=(B.y0+B.y1)/2;let awx=cxm-bcx,awy=cym-bcy;const awl=Math.hypot(awx,awy)||1;awx/=awl;awy/=awl;
+ /* تنسيق ثابت: نقطتان على خط واحد بتباعد صغير ومتساوٍ، وثلاث نقاط مثلث متساوي الأضلاع رأسه للأعلى */
+ const layout=f=>{
+  if(n===2){const dx=cs[1][0]-cs[0][0],dy=cs[1][1]-cs[0][1],L=Math.hypot(dx,dy)||1,ux=dx/L,uy=dy/L,half=D*1.55*f/2;
+   return [[cxm-ux*half,cym-uy*half],[cxm+ux*half,cym+uy*half]]}
+  if(n===3){let ia=0;for(let i=1;i<3;i++)if(cs[i][1]<cs[ia][1])ia=i;
+   const o=[0,1,2].filter(i=>i!==ia).sort((u,v)=>cs[u][0]-cs[v][0]),sd=D*1.55*f,h=sd*.866,t=[];
+   t[ia]=[cxm,cym-2*h/3];t[o[0]]=[cxm-sd/2,cym+h/3];t[o[1]]=[cxm+sd/2,cym+h/3];return t}
+  return null;
+ };
+ if(!layout(1))return {c:c,R:R,t:{}};
  const okShift=sh=>{
   for(let k=0;k<dots.length;k++){
    const o=comps[dots[k]],ax=Math.round(o.x0+sh[k][0])-pad,bx=Math.round(o.x1+sh[k][0])+pad,ay=Math.round(o.y0+sh[k][1])-pad,by=Math.round(o.y1+sh[k][1])+pad;
    if(ax<mg||ay<mg||bx>R-mg||by>R-mg)return false;
    for(let yy=ay;yy<=by;yy++)for(let xx=ax;xx<=bx;xx++)if(lab[yy*R+xx]===bi)return false;
   }
-  for(let a=0;a<dots.length;a++)for(let b=a+1;b<dots.length;b++){
-   const oa=comps[dots[a]],ob=comps[dots[b]];
-   const ca=[(oa.x0+oa.x1)/2+sh[a][0],(oa.y0+oa.y1)/2+sh[a][1]],cb=[(ob.x0+ob.x1)/2+sh[b][0],(ob.y0+ob.y1)/2+sh[b][1]];
-   if(Math.hypot(ca[0]-cb[0],ca[1]-cb[1])<D*1.2)return false;
-  }
   return true;
  };
- const f0=Math.min(3,target/dmin);let sh=null;
- for(let f=f0;f>1.02&&!sh;f-=.08){
-  for(const fy of [f,1+(f-1)*.5,1+(f-1)*.2,1]){const t=shifts(f,fy);if(okShift(t)){sh=t;break}}
+ let sh=null;
+ for(const f of [1,.92,.84,.76,.68]){
+  for(const t of [0,.15,.3,.45,.6,.8]){
+   const tg=layout(f),cand=tg.map((q,k)=>[q[0]+awx*t*D-cs[k][0],q[1]+awy*t*D-cs[k][1]]);
+   if(okShift(cand)){sh=cand;break}
+  }
+  if(sh)break;
  }
  if(!sh)return {c:c,R:R,t:{}};
  const out=mkCanvas(R),ox=out.getContext("2d"),oi=ox.createImageData(R,R),od=oi.data;
@@ -260,28 +267,101 @@ function prune(bw,G,maxLen){
   }
  }
 }
+
+/* نقاط موزّعة بالتساوي على مسار مكوّن صغير (الهمزة، علامة الكاف): أطول مسار في الهيكل ثم أخذ عينات بمسافات متساوية */
+function pathDots(g,k,S){
+ const key=(x,y)=>x*1000+y,m={};
+ g.forEach((q,i)=>{m[key(Math.round(q[0]/k-.5),Math.round(q[1]/k-.5))]=i});
+ const adj=g.map((q,i)=>{const x=Math.round(q[0]/k-.5),y=Math.round(q[1]/k-.5),r=[];
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const j=m[key(x+dx,y+dy)];if(j!==undefined)r.push(j)}return r});
+ const bfs=s0=>{const d=new Array(g.length).fill(-1),par=new Array(g.length).fill(-1),qu=[s0];d[s0]=0;
+  for(let h=0;h<qu.length;h++){const i=qu[h];adj[i].forEach(j=>{if(d[j]<0){d[j]=d[i]+1;par[j]=i;qu.push(j)}})}
+  let far=s0;qu.forEach(i=>{if(d[i]>d[far])far=i});return {far:far,par:par}};
+ const A=bfs(0).far,r=bfs(A),path=[];
+ for(let i=r.far;i>=0;i=r.par[i])path.push(g[i]);
+ if(path.length<3)return null;
+ const cum=[0];for(let i=1;i<path.length;i++)cum.push(cum[i-1]+Math.hypot(path[i][0]-path[i-1][0],path[i][1]-path[i-1][1]));
+ const L=cum[cum.length-1];if(L<S*.04)return null;
+ const n=Math.max(3,Math.round(L/(S*.038))+1),out=[];
+ for(let t=0;t<n;t++){const target=L*t/(n-1);let b=0;for(let i=0;i<cum.length;i++)if(Math.abs(cum[i]-target)<Math.abs(cum[b]-target))b=i;out.push(path[b])}
+ return out;
+}
+
+/* الترقيق يقصّر أطراف الخط بمقدار نصف السُّمك: نمدّ كل طرف على اتجاهه حتى حافة الحرف فيظهر الشكل كاملًا من أول الخط إلى آخره */
+function extendEnds(bw,ink0,G){
+ const eps=[];
+ for(let i=0;i<bw.length;i++)if(bw[i]&&nbrs(bw,G,i).length===1)eps.push(i);
+ const maxExt=Math.round(G*.075);
+ eps.forEach(e=>{
+  const path=[e];let prev=-1,c=e;
+  for(let k=0;k<7;k++){const n=nbrs(bw,G,c).filter(j=>j!==prev&&path.indexOf(j)<0);if(n.length!==1)break;prev=c;c=n[0];path.push(c)}
+  if(path.length<4)return;
+  const ex=e%G,ey=(e-ex)/G,bx=c%G,by=(c-bx)/G;let dx=ex-bx,dy=ey-by;const L=Math.hypot(dx,dy);if(!L)return;dx/=L;dy/=L;
+  let fx=ex,fy=ey;
+  for(let s=1;s<=maxExt;s++){
+   fx=ex+dx*s;fy=ey+dy*s;const ix=Math.round(fx),iy=Math.round(fy);
+   if(ix<1||iy<1||ix>=G-1||iy>=G-1||!ink0[iy*G+ix])break;
+   // لا نمدّ إن اقتربنا من جزء آخر من الهيكل
+   let near=false;for(let ddy=-1;ddy<=1&&!near;ddy++)for(let ddx=-1;ddx<=1;ddx++){const j=(iy+ddy)*G+ix+ddx;if(bw[j]&&path.indexOf(j)<0&&j!==iy*G+ix){near=true;break}}
+   if(near)break;
+   bw[iy*G+ix]=1;
+  }
+ });
+}
+
+/* نقاط منتظمة التباعد على مسار الحرف: نمشي على الهيكل من طرفه الأيمن العلوي (جهة بداية الكتابة العربية) ونضع نقطة كلما ابتعدنا مسافة ثابتة عن النقاط السابقة، ونضمن نقطة عند كل طرف */
+function orderedDots(g,k,gap){
+ const key=(x,y)=>x*1000+y,m={},gx=g.map(q=>Math.round(q[0]/k-.5)),gy=g.map(q=>Math.round(q[1]/k-.5));
+ g.forEach((q,i)=>{m[key(gx[i],gy[i])]=i});
+ const adj=g.map((q,i)=>{const r=[];for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const j=m[key(gx[i]+dx,gy[i]+dy)];if(j!==undefined)r.push(j)}return r});
+ const seen=new Uint8Array(g.length),order=[];
+ const ends=[];g.forEach((q,i)=>{if(adj[i].length===1)ends.push(i)});
+ const score=i=>g[i][0]-g[i][1]*.6;
+ const starts=ends.slice().sort((a,b)=>score(b)-score(a));
+ const rest=g.map((q,i)=>i).sort((a,b)=>score(b)-score(a));
+ const run=s0=>{if(seen[s0])return;const qu=[s0];seen[s0]=1;for(let h=0;h<qu.length;h++){const i=qu[h];order.push(i);adj[i].forEach(j=>{if(!seen[j]){seen[j]=1;qu.push(j)}})}};
+ starts.concat(rest).forEach(run);
+ const mine=[],g2=gap*gap;
+ const far=(q,r2)=>{for(const w of mine){const dx=q[0]-w[0],dy=q[1]-w[1];if(dx*dx+dy*dy<r2)return false}return true};
+ order.forEach(i=>{if(far(g[i],g2))mine.push(g[i])});
+ ends.forEach(i=>{if(far(g[i],g2*.3))mine.push(g[i])});
+ return mine;
+}
 function skeleton(){
- const S=st.S,it=cur(),G=Math.min(170,Math.round(S)),key=st.kind+"|"+it.ch+"|"+Math.round(S);
+ const S=st.S,it=cur(),G=Math.min(190,Math.round(S)),key=st.kind+"|"+it.ch+"|"+Math.round(S);
  if(SK.key===key)return SK;
  const c=mkCanvas(G),x=c.getContext("2d");x.scale(G/S,G/S);
  const p=fit(x,it.ch);x.fillStyle="#000";gFill(x,it.ch,p);
  const d=x.getImageData(0,0,G,G).data,bw=new Uint8Array(G*G);
  for(let i=0;i<bw.length;i++)bw[i]=d[i*4+3]>127?1:0;
  const ink0=bw.slice();
- thin(bw,G);prune(bw,G,Math.round(G*.07));
+ thin(bw,G);prune(bw,G,Math.round(G*.085));
+ /* كل مكوّن من الحرف (نقطة، همزة...) يجب أن يبقى له أثر في الهيكل؛ الترقيق قد يمحو المكوّنات الصغيرة تمامًا فتضيع نقطة من الحرف */
+ (function(){const N=G*G,il=new Uint8Array(N);
+  for(let i=0;i<N;i++){if(!ink0[i]||il[i])continue;const comp=[],st_=[i];il[i]=1;let has=false,sx=0,sy=0;
+   while(st_.length){const c0=st_.pop();comp.push(c0);if(bw[c0])has=true;const x=c0%G,y=(c0-x)/G;sx+=x;sy+=y;
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=G||ny>=G)continue;const j=ny*G+nx;if(ink0[j]&&!il[j]){il[j]=1;st_.push(j)}}}
+   if(!has&&comp.length>=3){const cx=sx/comp.length,cy=sy/comp.length;let b=comp[0],bd=1e18;comp.forEach(c0=>{const x=c0%G,y=(c0-x)/G,d=(x-cx)*(x-cx)+(y-cy)*(y-cy);if(d<bd){bd=d;b=c0}});bw[b]=1}
+  }})();
+ extendEnds(bw,ink0,G);
  const k=S/G,pts=[],lbl=new Int32Array(G*G).fill(-1);let nc=0;
  for(let i=0;i<bw.length;i++)if(bw[i]&&lbl[i]<0){const stack=[i];lbl[i]=nc;while(stack.length){const c0=stack.pop();for(const j of nbrs(bw,G,c0))if(lbl[j]<0){lbl[j]=nc;stack.push(j)}}nc++}
  for(let i=0;i<bw.length;i++)if(bw[i]){const gx_=i%G,gy_=(i-gx_)/G;pts.push([(gx_+.5)*k,(gy_+.5)*k,lbl[i]])}
  /* ترميم: مناطق من الحرف ضاعت من الهيكل (بعد الترقيق أو حذف الأشواك) فتبقى بلا نقاط؛ نضيف لها نقاط من منتصف السُّمك */
  (function(){
   const N=G*G,INF=1e9,dBg=new Int32Array(N).fill(INF),dSk=new Int32Array(N).fill(INF),lSk=new Int32Array(N).fill(-1);
-  let q=[];for(let i=0;i<N;i++)if(!ink0[i]){dBg[i]=0;q.push(i)}
+   const il=new Int32Array(N).fill(-1),ia=[];
+  for(let i=0;i<N;i++){if(!ink0[i]||il[i]>=0)continue;const id=ia.length;let n_=0;const st_=[i];il[i]=id;
+   while(st_.length){const c0=st_.pop();n_++;const x=c0%G,y=(c0-x)/G;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=G||ny>=G)continue;const j=ny*G+nx;if(ink0[j]&&il[j]<0){il[j]=id;st_.push(j)}}}
+   ia.push(n_)}
+  const maxA=Math.max.apply(null,ia.concat([1]));
+ let q=[];for(let i=0;i<N;i++)if(!ink0[i]){dBg[i]=0;q.push(i)}
   for(let h=0;h<q.length;h++){const i=q[h],x=i%G,y=(i-x)/G;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=G||ny>=G)continue;const j=ny*G+nx;if(dBg[j]>dBg[i]+1){dBg[j]=dBg[i]+1;q.push(j)}}}
   q=[];for(let i=0;i<N;i++)if(bw[i]){dSk[i]=0;lSk[i]=lbl[i];q.push(i)}
   if(!q.length)return;
   for(let h=0;h<q.length;h++){const i=q[h],x=i%G,y=(i-x)/G;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=G||ny>=G)continue;const j=ny*G+nx;if(dSk[j]>dSk[i]+1){dSk[j]=dSk[i]+1;lSk[j]=lSk[i];q.push(j)}}}
   for(let y=1;y<G-1;y++)for(let x=1;x<G-1;x++){
-   const i=y*G+x;if(!ink0[i]||dBg[i]<3||dSk[i]<4||dSk[i]<=dBg[i]+1)continue;
+   const i=y*G+x;if(!ink0[i]||ia[il[i]]<maxA*.35||dBg[i]<3||dSk[i]<4||dSk[i]<=dBg[i]+1)continue;
    let ridge=true;for(let dy=-1;dy<=1&&ridge;dy++)for(let dx=-1;dx<=1;dx++)if(dBg[(y+dy)*G+x+dx]>dBg[i]){ridge=false;break}
    if(ridge)pts.push([(x+.5)*k,(y+.5)*k,lSk[i]]);
   }
@@ -299,9 +379,8 @@ function skeleton(){
    let b=g[0],bd=1e18;g.forEach(q=>{const d=(q[0]-cx)*(q[0]-cx)+(q[1]-cy)*(q[1]-cy);if(d<bd){bd=d;b=q}});
    dots.push(b);return;
   }
-  const gap=(id!=bodyId&&ext<S*.22)?S*.032:S*.058,mine=[];
-  for(const q of g){let ok=true;for(const w of mine){const dx=q[0]-w[0],dy=q[1]-w[1];if(dx*dx+dy*dy<gap*gap){ok=false;break}}if(ok)mine.push(q)}
-  mine.forEach(q=>dots.push(q));
+  if(id!=bodyId&&ext<S*.22){const ps=pathDots(g,k,S);if(ps){ps.forEach(q=>dots.push(q));return}}
+  orderedDots(g,k,S*.056).forEach(q=>dots.push(q));
  });
  SK.key=key;SK.pts=pts;SK.dots=dots;return SK;
 }
