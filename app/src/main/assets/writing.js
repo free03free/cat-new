@@ -223,6 +223,67 @@ function gStroke(ctx,ch,p){
  for(const k of [1,.75,.5,.25])for(let a=0;a<24;a++){const th=a*Math.PI/12;ctx.drawImage(t,Math.cos(th)*r*k,Math.sin(th)*r*k,S,S)}
 }
 /* ----- الهيكل المركزي للشكل (خط واحد منقّط بدل خطّي الحافة): ترقيق Zhang-Suen ثم حذف الأشواك القصيرة ----- */
+/* ===== نماذج مرسومة يدويًا للحروف التي يشوّهها الترقيق (حاليًا: أ) ===== */
+const LP={
+"أ":{s:[[[54,4],[54,70]],[[66,-37],[52,-38],[44,-31],[52,-25],[63,-21],[52,-13],[40,-11]]],d:[]}
+};
+/* Catmull-Rom داخل كل مقطع بين زاويتين */
+function sampleStroke(pts,step){
+  const out=[];
+  const segs=[];let cur=[pts[0]];
+  for(let i=1;i<pts.length;i++){cur.push(pts[i]);if(pts[i][2]&&i<pts.length-1){segs.push(cur);cur=[pts[i]]}}
+  segs.push(cur);
+  segs.forEach((sg,si)=>{
+    const P=sg.map(p=>[p[0],p[1]]);
+    if(P.length===2){const L=Math.hypot(P[1][0]-P[0][0],P[1][1]-P[0][1]),n=Math.max(1,Math.ceil(L/step));
+      for(let k=(si?1:0);k<=n;k++)out.push([P[0][0]+(P[1][0]-P[0][0])*k/n,P[0][1]+(P[1][1]-P[0][1])*k/n]);return}
+    const g=(i)=>P[Math.max(0,Math.min(P.length-1,i))];
+    for(let i=0;i<P.length-1;i++){
+      const p0=i===0?[2*P[0][0]-P[1][0],2*P[0][1]-P[1][1]]:g(i-1),p1=P[i],p2=P[i+1],
+        p3=i+2>P.length-1?[2*P[P.length-1][0]-P[P.length-2][0],2*P[P.length-1][1]-P[P.length-2][1]]:g(i+2);
+      const L=Math.hypot(p2[0]-p1[0],p2[1]-p1[1]),n=Math.max(2,Math.ceil(L/step));
+      for(let k=(i===0&&si>0?1:(i===0?0:1));k<=n;k++){
+        const t=k/n,t2=t*t,t3=t2*t;
+        out.push([0.5*((2*p1[0])+(-p0[0]+p2[0])*t+(2*p0[0]-5*p1[0]+4*p2[0]-p3[0])*t2+(-p0[0]+3*p1[0]-3*p2[0]+p3[0])*t3),
+                  0.5*((2*p1[1])+(-p0[1]+p2[1])*t+(2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*t2+(-p0[1]+3*p1[1]-3*p2[1]+p3[1])*t3)]);
+      }
+    }
+  });
+  return out;
+}
+
+const MSK={key:"",o:null};
+function modelSkel(ch,S){
+ const key=ch+"|"+Math.round(S);if(MSK.key===key)return MSK.o;
+ const M=LP[ch];if(!M)return null;
+ const raw=M.s.map(sg=>sampleStroke(sg,1.2));
+ let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+ const ext=(x,y)=>{x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)};
+ raw.forEach(sg=>sg.forEach(p=>ext(p[0],p[1])));M.d.forEach(p=>{ext(p[0]-6,p[1]-6);ext(p[0]+6,p[1]+6)});
+ const k=Math.min(S*.64/Math.max(x1-x0,1),S*.64/Math.max(y1-y0,1)),ox=S/2-k*(x0+x1)/2,oy=S/2-k*(y0+y1)/2;
+ const T=p=>[ox+k*p[0],oy+k*p[1]];
+ const strokes=raw.map(sg=>sg.map(T)),pts=[],dots=[],gap=S*.056;
+ strokes.forEach((sg,ci)=>{
+  const cum=[0];for(let i=1;i<sg.length;i++)cum.push(cum[i-1]+Math.hypot(sg[i][0]-sg[i-1][0],sg[i][1]-sg[i-1][1]));
+  sg.forEach(p=>pts.push([p[0],p[1],ci]));
+  const anchors=[0];
+  M.s[ci].forEach((q,i)=>{if(q[2]&&i>0&&i<M.s[ci].length-1){const t=T(q);let b=0,bd=1e18;sg.forEach((p,j)=>{const d=(p[0]-t[0])*(p[0]-t[0])+(p[1]-t[1])*(p[1]-t[1]);if(d<bd){bd=d;b=j}});anchors.push(b)}});
+  anchors.push(sg.length-1);
+  const at=L=>{let j=1;while(j<cum.length-1&&cum[j]<L)j++;const a=cum[j]-cum[j-1]||1,f=(L-cum[j-1])/a;return [sg[j-1][0]+(sg[j][0]-sg[j-1][0])*f,sg[j-1][1]+(sg[j][1]-sg[j-1][1])*f]};
+  const first=sg[0],last=sg[sg.length-1],closed=Math.hypot(first[0]-last[0],first[1]-last[1])<gap*.6;
+  for(let a=0;a<anchors.length-1;a++){
+   const L0=cum[anchors[a]],L1=cum[anchors[a+1]],gp=cum[cum.length-1]<S*.3?S*.036:gap,n=Math.max(1,Math.round((L1-L0)/gp));
+   for(let t=(a===0?0:1);t<=n;t++){
+    if(closed&&a===anchors.length-2&&t===n)continue;
+    const q=at(L0+(L1-L0)*t/n);dots.push([q[0],q[1]]);
+   }
+  }
+ });
+ const marks=M.d.map(T),r=Math.max(3.5,S*.0125);
+ marks.forEach((c,j)=>{dots.push([c[0],c[1]]);const id=strokes.length+j;pts.push([c[0],c[1],id]);for(let a=0;a<6;a++)pts.push([c[0]+Math.cos(a*Math.PI/3)*r*1.1,c[1]+Math.sin(a*Math.PI/3)*r*1.1,id])});
+ const o={strokes:strokes,pts:pts,dots:dots,marks:marks};
+ MSK.key=key;MSK.o=o;return o;
+}
 const SK={key:"",pts:[],dots:[]};
 function thin(bw,G){
  const I=(x,y)=>y*G+x;let changed=true,guard=0;
@@ -328,6 +389,7 @@ function orderedDots(g,k,gap){
  return mine;
 }
 function skeleton(){
+ if(st.kind==="letters"&&LP[cur().ch]){const mk=modelSkel(cur().ch,st.S);if(mk)return mk}
  const S=st.S,it=cur(),G=Math.min(190,Math.round(S)),key=st.kind+"|"+it.ch+"|"+Math.round(S);
  if(SK.key===key)return SK;
  const c=mkCanvas(G),x=c.getContext("2d");x.scale(G/S,G/S);
@@ -380,7 +442,7 @@ function skeleton(){
    dots.push(b);return;
   }
   if(id!=bodyId&&ext<S*.22){const ps=pathDots(g,k,S);if(ps){ps.forEach(q=>dots.push(q));return}}
-  orderedDots(g,k,S*.046).forEach(q=>dots.push(q));
+  orderedDots(g,k,S*.056).forEach(q=>dots.push(q));
  });
  SK.key=key;SK.pts=pts;SK.dots=dots;return SK;
 }
@@ -472,8 +534,12 @@ function score(){
  const cov=mkCanvas(S),cx=cov.getContext("2d");strokesTo(cx,penW()+S*.035,S);
  const C=cx.getImageData(0,0,S,S).data;
  // حدود مسموحة للخروج: الشكل موسَّعًا قليلًا
- const dil=mkCanvas(S),dx=dil.getContext("2d"),q=fit(dx,it.ch);
- dx.fillStyle="#000";gFill(dx,it.ch,q);dx.lineWidth=S*.12;dx.lineJoin="round";dx.strokeStyle="#000";gStroke(dx,it.ch,q);
+ const dil=mkCanvas(S),dx=dil.getContext("2d");
+ if(st.level==="dots"&&st.kind==="letters"&&LP[it.ch]){
+  const mk=skeleton();dx.fillStyle="#000";dx.strokeStyle="#000";dx.lineCap=dx.lineJoin="round";dx.lineWidth=S*.15;
+  mk.strokes.forEach(sg=>{dx.beginPath();sg.forEach((p,i)=>i?dx.lineTo(p[0],p[1]):dx.moveTo(p[0],p[1]));dx.stroke()});
+ }else{const q=fit(dx,it.ch);
+ dx.fillStyle="#000";gFill(dx,it.ch,q);dx.lineWidth=S*.12;dx.lineJoin="round";dx.strokeStyle="#000";gStroke(dx,it.ch,q);}
  const D=dx.getImageData(0,0,S,S).data;
  const at=(arr,x,y)=>arr[(Math.min(S-1,Math.max(0,y))*S+Math.min(S-1,Math.max(0,x)))*4+3];
  // عينات الهدف مع رقم المكوّن (الجسم، الهمزة، كل نقطة...)
@@ -529,6 +595,10 @@ function score(){
 }
 /* مكوّنات الحرف نفسه (الجسم، كل نقطة، الهمزة...) تُستخرج من رسم الحرف مهما كان المستوى */
 function glyphComps(S,it){
+ if(st.level==="dots"&&st.kind==="letters"&&LP[it.ch]){
+  const samples=[],cnt={};skeleton().pts.forEach(q=>{const c=q[2];samples.push([Math.round(q[0]),Math.round(q[1]),c]);cnt[c]=(cnt[c]||0)+1});
+  return {samples:samples,cnt:cnt,total:samples.length};
+ }
  const tg=mkCanvas(S),tx=tg.getContext("2d"),p=fit(tx,it.ch);tx.fillStyle="#000";gFill(tx,it.ch,p);
  const T=tx.getImageData(0,0,S,S).data,k=3,W=Math.ceil(S/k),lab=new Int32Array(W*W).fill(-1);let nc=0;
  const on=(a,b)=>a>=0&&b>=0&&a<W&&b<W&&T[(Math.min(S-1,b*k)*S+Math.min(S-1,a*k))*4+3]>40;
