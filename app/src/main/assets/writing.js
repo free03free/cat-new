@@ -13,7 +13,7 @@ function pref(k,d){try{const v=parseFloat(localStorage.getItem(k));return isFini
 function maxNum(){let m=parseInt(localStorage.getItem("learningMaxNumber")||"10",10);if(!isFinite(m)||m<1)m=10;return Math.min(m,100)}
 const LEVELS={
  trace:{hint:"لوّن فوق الشكل الرمادي دون أن تخرج منه، وسأشجعك عند الإتقان",pen:.055},
- dots:{hint:"ارسم فوق النقاط بالترتيب دون أن تبتعد عنها، وسأشجعك عند الإتقان",pen:.045},
+ dots:{hint:"ابدأ من النقطة الخضراء وصِل النقاط بالترتيب بخط واحد، ثم المس نقاط الحرف البرتقالية إن وُجدت",pen:.045},
  free:{hint:"اكتب بنفسك وانظر إلى النموذج المصغّر في الزاوية، ثم اضغط «تحقق» لترى النموذج كبيرًا",pen:.045}
 };
 const st={kind:"letters",level:"trace",idx:0,strokes:[],cur:null,S:300,modelT:0};
@@ -223,6 +223,113 @@ function gStroke(ctx,ch,p){
  for(const k of [1,.75,.5,.25])for(let a=0;a<24;a++){const th=a*Math.PI/12;ctx.drawImage(t,Math.cos(th)*r*k,Math.sin(th)*r*k,S,S)}
 }
 /* ----- الهيكل المركزي للشكل (خط واحد منقّط بدل خطّي الحافة): ترقيق Zhang-Suen ثم حذف الأشواك القصيرة ----- */
+/* ===== نماذج «صِلِ النقاط» للحروف: مسار خط واحد مرسوم يدويًا لكل حرف (بدل ترقيق شكل الخط الذي كان يشوّه الحروف) ===== */
+/* نماذج الحروف: مسار خط واحد لكل حرف (كما في دفاتر تعليم الكتابة) + نقاط الحرف.
+   الإحداثيات في مربع تقريبي 0..100 (اليمين = x كبير، الأسفل = y كبير، خط الأساس y=70).
+   s: خطوط (كل خط قائمة نقاط [x,y]؛ ثالث العنصر 1 = زاوية حادة)، d: نقاط الحرف نفسها (ب ت ث...)، تُرسم بلون مختلف */
+const LP={
+"أ":{s:[[[54,6],[54,70]],[[66,-34],[48,-36],[38,-27],[50,-20],[64,-14],[50,-6],[34,-4]]],d:[]},
+"ب":{s:[[[97,34],[95,54],[84,66],[60,70],[36,70],[16,64],[6,52],[3,40]]],d:[[50,90]]},
+"ت":{s:[[[97,34],[95,54],[84,66],[60,70],[36,70],[16,64],[6,52],[3,40]]],d:[[40,36],[60,36]]},
+"ث":{s:[[[97,34],[95,54],[84,66],[60,70],[36,70],[16,64],[6,52],[3,40]]],d:[[50,12],[38,31],[62,31]]},
+"ج":{s:[[[95,24],[76,17],[52,16],[30,21],[20,32],[34,42],[52,48],[64,56],[60,68],[44,76],[26,76]]],d:[[40,62]]},
+"ح":{s:[[[95,24],[76,17],[52,16],[30,21],[20,32],[34,42],[52,48],[64,56],[60,68],[44,76],[26,76]]],d:[]},
+"خ":{s:[[[95,24],[76,17],[52,16],[30,21],[20,32],[34,42],[52,48],[64,56],[60,68],[44,76],[26,76]]],d:[[58,0]]},
+"د":{s:[[[34,32],[60,32],[70,44],[64,60],[46,68],[20,70]]],d:[]},
+"ذ":{s:[[[34,32],[60,32],[70,44],[64,60],[46,68],[20,70]]],d:[[50,12]]},
+"ر":{s:[[[80,34],[78,54],[66,68],[48,78],[34,82],[22,82]]],d:[]},
+"ز":{s:[[[80,34],[78,54],[66,68],[48,78],[34,82],[22,82]]],d:[[58,14]]},
+"س":{s:[[[98,62,1],[91,42,1],[84,62,1],[77,42,1],[70,62,1],[63,42,1],[56,62],[44,72],[28,78],[13,72],[3,56]]],d:[]},
+"ش":{s:[[[98,62,1],[91,42,1],[84,62,1],[77,42,1],[70,62,1],[63,42,1],[56,62],[44,72],[28,78],[13,72],[3,56]]],d:[[77,6],[65,24],[89,24]]},
+"ص":{s:[[[86,40],[70,40],[62,52],[72,62],[90,62],[98,52],[92,41],[86,40]],[[62,62],[40,68],[22,74],[8,70],[3,58]]],d:[]},
+"ض":{s:[[[86,40],[70,40],[62,52],[72,62],[90,62],[98,52],[92,41],[86,40]],[[62,62],[40,68],[22,74],[8,70],[3,58]]],d:[[78,16]]},
+"ط":{s:[[[70,46],[48,44],[34,52],[40,63],[62,66],[86,66],[98,60]],[[66,0],[66,66]]],d:[]},
+"ظ":{s:[[[70,46],[48,44],[34,52],[40,63],[62,66],[86,66],[98,60]],[[66,0],[66,66]]],d:[[84,24]]},
+"ع":{s:[[[80,16],[62,10],[46,16],[42,28],[54,38],[66,46],[62,58],[46,68],[26,70],[10,62],[6,50]]],d:[]},
+"غ":{s:[[[80,16],[62,10],[46,16],[42,28],[54,38],[66,46],[62,58],[46,68],[26,70],[10,62],[6,50]]],d:[[62,-8]]},
+"ف":{s:[[[88,36],[74,32],[62,40],[64,52],[78,58],[92,52],[92,40],[88,36]],[[66,58],[48,66],[26,68],[8,62],[3,50]]],d:[[76,12]]},
+"ق":{s:[[[86,26],[72,24],[62,32],[64,44],[78,50],[90,44],[90,32],[86,26]],[[92,48],[94,64],[82,78],[56,84],[32,80],[18,68],[14,54]]],d:[[66,4],[84,4]]},
+"ك":{s:[[[84,0],[84,40],[82,58],[68,68],[42,70],[12,68]],[[82,10],[64,14],[44,24]],[[62,54],[46,46],[58,40],[44,32]]],d:[]},
+"ل":{s:[[[78,0],[78,50],[74,66],[58,74],[38,74],[20,66],[10,52]]],d:[]},
+"م":{s:[[[80,26],[66,26],[58,38],[64,50],[78,52],[88,44],[86,32],[80,26]],[[72,52],[72,72],[70,88],[62,96]]],d:[]},
+"ن":{s:[[[92,40],[92,56],[80,68],[56,72],[32,68],[18,56],[14,42]]],d:[[52,22]]},
+"ه":{s:[[[58,34],[38,48],[46,66],[70,72],[88,62],[86,44],[70,38],[60,46],[66,57]]],d:[]},
+"و":{s:[[[74,26],[58,26],[50,38],[58,48],[72,48],[80,38],[74,26]],[[76,46],[80,62],[70,76],[50,86],[28,88],[14,82]]],d:[]},
+"ي":{s:[[[94,34],[94,52],[84,64],[62,66],[40,72],[20,80],[6,84],[2,74]]],d:[[46,94],[66,94]]}
+};
+
+/* Catmull-Rom داخل كل مقطع بين زاويتين */
+function sampleStroke(pts,step){
+  const out=[];
+  const segs=[];let cur=[pts[0]];
+  for(let i=1;i<pts.length;i++){cur.push(pts[i]);if(pts[i][2]&&i<pts.length-1){segs.push(cur);cur=[pts[i]]}}
+  segs.push(cur);
+  segs.forEach((sg,si)=>{
+    const P=sg.map(p=>[p[0],p[1]]);
+    if(P.length===2){const L=Math.hypot(P[1][0]-P[0][0],P[1][1]-P[0][1]),n=Math.max(1,Math.ceil(L/step));
+      for(let k=(si?1:0);k<=n;k++)out.push([P[0][0]+(P[1][0]-P[0][0])*k/n,P[0][1]+(P[1][1]-P[0][1])*k/n]);return}
+    const g=(i)=>P[Math.max(0,Math.min(P.length-1,i))];
+    for(let i=0;i<P.length-1;i++){
+      const p0=i===0?[2*P[0][0]-P[1][0],2*P[0][1]-P[1][1]]:g(i-1),p1=P[i],p2=P[i+1],
+        p3=i+2>P.length-1?[2*P[P.length-1][0]-P[P.length-2][0],2*P[P.length-1][1]-P[P.length-2][1]]:g(i+2);
+      const L=Math.hypot(p2[0]-p1[0],p2[1]-p1[1]),n=Math.max(2,Math.ceil(L/step));
+      for(let k=(i===0&&si>0?1:(i===0?0:1));k<=n;k++){
+        const t=k/n,t2=t*t,t3=t2*t;
+        out.push([0.5*((2*p1[0])+(-p0[0]+p2[0])*t+(2*p0[0]-5*p1[0]+4*p2[0]-p3[0])*t2+(-p0[0]+3*p1[0]-3*p2[0]+p3[0])*t3),
+                  0.5*((2*p1[1])+(-p0[1]+p2[1])*t+(2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*t2+(-p0[1]+3*p1[1]-3*p2[1]+p3[1])*t3)]);
+      }
+    }
+  });
+  return out;
+}
+
+const MSK={key:"",o:null};
+function modelSkel(ch,S){
+ const key=ch+"|"+Math.round(S);if(MSK.key===key)return MSK.o;
+ const M=LP[ch];if(!M)return null;
+ const raw=M.s.map(sg=>sampleStroke(sg,1.2));
+ let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+ const ext=(x,y)=>{x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)};
+ raw.forEach(sg=>sg.forEach(p=>ext(p[0],p[1])));M.d.forEach(p=>{ext(p[0]-6,p[1]-6);ext(p[0]+6,p[1]+6)});
+ const k=Math.min(S*.64/Math.max(x1-x0,1),S*.64/Math.max(y1-y0,1)),ox=S/2-k*(x0+x1)/2,oy=S/2-k*(y0+y1)/2;
+ const T=p=>[ox+k*p[0],oy+k*p[1]];
+ const strokes=raw.map(sg=>sg.map(T)),pts=[],dots=[],gap=S*.052,multi=strokes.length>1;
+ strokes.forEach((sg,ci)=>{
+  const cum=[0];for(let i=1;i<sg.length;i++)cum.push(cum[i-1]+Math.hypot(sg[i][0]-sg[i-1][0],sg[i][1]-sg[i-1][1]));
+  sg.forEach(p=>pts.push([p[0],p[1],ci]));
+  /* مراسي: بداية الخط + الزوايا الحادة + نهايته؛ بين كل مرساتين نقاط متساوية التباعد */
+  const anchors=[0];
+  M.s[ci].forEach((q,i)=>{if(q[2]&&i>0&&i<M.s[ci].length-1){const t=T(q);let b=0,bd=1e18;sg.forEach((p,j)=>{const d=(p[0]-t[0])*(p[0]-t[0])+(p[1]-t[1])*(p[1]-t[1]);if(d<bd){bd=d;b=j}});anchors.push(b)}});
+  anchors.push(sg.length-1);
+  const at=L=>{let j=1;while(j<cum.length-1&&cum[j]<L)j++;const a=cum[j]-cum[j-1]||1,f=(L-cum[j-1])/a;return [sg[j-1][0]+(sg[j][0]-sg[j-1][0])*f,sg[j-1][1]+(sg[j][1]-sg[j-1][1])*f]};
+  const first=sg[0],last=sg[sg.length-1],closed=Math.hypot(first[0]-last[0],first[1]-last[1])<gap*.6;
+  for(let a=0;a<anchors.length-1;a++){
+   const L0=cum[anchors[a]],L1=cum[anchors[a+1]],n=Math.max(1,Math.round((L1-L0)/gap));
+   for(let t=(a===0?0:1);t<=n;t++){
+    if(closed&&a===anchors.length-2&&t===n)continue;
+    const q=at(L0+(L1-L0)*t/n);dots.push([q[0],q[1],(a===0&&t===0)?2:0,ci+1]);
+   }
+  }
+ });
+ const marks=M.d.map(T),r=Math.max(3.5,S*.0125);
+ marks.forEach((c,j)=>{
+  dots.push([c[0],c[1],1,0]);
+  const id=strokes.length+j;pts.push([c[0],c[1],id]);
+  for(let a=0;a<6;a++)pts.push([c[0]+Math.cos(a*Math.PI/3)*r*1.1,c[1]+Math.sin(a*Math.PI/3)*r*1.1,id]);
+ });
+ const o={strokes:strokes,pts:pts,dots:dots,marks:marks,multi:multi};
+ MSK.key=key;MSK.o=o;return o;
+}
+/* رسم نقاط الدليل: أول نقطة خضراء (ورقم الخط إن كان للحرف أكثر من خط)، نقاط الحرف نفسه برتقالية أكبر، الباقي أزرق */
+function drawDotSet(ctx,sk,halo){
+ const r=Math.max(3.5,st.S*.0125),multi=sk.multi;
+ sk.dots.forEach(q=>{
+  const ty=q[2]||0,rr=ty===1?r*1.9:(ty===2?r*1.45:r),col=ty===1?"#e0701a":(ty===2?"#1f9a43":(halo?"#2c4a8c":"#4f6fae"));
+  if(halo){ctx.beginPath();ctx.arc(q[0],q[1],rr+1.6,0,6.2832);ctx.fillStyle="#fff";ctx.fill()}
+  ctx.beginPath();ctx.arc(q[0],q[1],rr,0,6.2832);ctx.fillStyle=col;ctx.fill();
+  if(ty===2&&multi){ctx.fillStyle="#fff";ctx.font="900 "+Math.round(rr*1.5)+"px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(String(q[3]),q[0],q[1]+.5)}
+ });
+}
 const SK={key:"",pts:[],dots:[]};
 function thin(bw,G){
  const I=(x,y)=>y*G+x;let changed=true,guard=0;
@@ -328,6 +435,7 @@ function orderedDots(g,k,gap){
  return mine;
 }
 function skeleton(){
+ if(st.kind==="letters"&&LP[cur().ch]){const mk=modelSkel(cur().ch,st.S);if(mk)return mk}
  const S=st.S,it=cur(),G=Math.min(190,Math.round(S)),key=st.kind+"|"+it.ch+"|"+Math.round(S);
  if(SK.key===key)return SK;
  const c=mkCanvas(G),x=c.getContext("2d");x.scale(G/S,G/S);
@@ -407,8 +515,7 @@ function drawGuide(model){
   gx.lineWidth=2.5;gx.strokeStyle="#a9c0ea";gx.lineJoin="round";gStroke(gx,it.ch,p);
   gx.fillStyle="#dfe9fa";gFill(gx,it.ch,p);
  }else{
-  const sk=skeleton();gx.fillStyle="#4f6fae";
-  sk.dots.forEach(q=>{gx.beginPath();gx.arc(q[0],q[1],Math.max(3.5,st.S*.0125),0,6.2832);gx.fill()});
+  drawDotSet(gx,skeleton(),false);
  }
 }
 function penW(){return Math.max(8,st.S*LEVELS[st.level].pen)}
@@ -426,8 +533,7 @@ function drawInk(){
  clearCtx(ix);strokesTo(ix,penW(),st.S);
  // في «صِلِ النقاط»: النقاط تُرسم فوق الخط دائمًا، فلا تُخفيها كتلة ولا يظن الطفل أنها «مُسحت»
  if(st.level==="dots"&&cur()){
-  const sk=skeleton(),r=Math.max(3.5,st.S*.0125);
-  sk.dots.forEach(q=>{ix.beginPath();ix.arc(q[0],q[1],r+1.6,0,6.2832);ix.fillStyle="#fff";ix.fill();ix.beginPath();ix.arc(q[0],q[1],r,0,6.2832);ix.fillStyle="#2c4a8c";ix.fill()});
+  drawDotSet(ix,skeleton(),true);
  }
 }
 /* نسبة الحبر خارج «ممر» النقاط (نحو 7% من اللوحة حول مسار الحرف): الرسم الصحيح داخله، والتظليل الواسع يخرج منه */
@@ -472,8 +578,14 @@ function score(){
  const cov=mkCanvas(S),cx=cov.getContext("2d");strokesTo(cx,penW()+S*.035,S);
  const C=cx.getImageData(0,0,S,S).data;
  // حدود مسموحة للخروج: الشكل موسَّعًا قليلًا
- const dil=mkCanvas(S),dx=dil.getContext("2d"),q=fit(dx,it.ch);
- dx.fillStyle="#000";gFill(dx,it.ch,q);dx.lineWidth=S*.12;dx.lineJoin="round";dx.strokeStyle="#000";gStroke(dx,it.ch,q);
+ const dil=mkCanvas(S),dx=dil.getContext("2d");
+ if(st.level==="dots"&&st.kind==="letters"&&LP[it.ch]){
+  /* المنطقة المسموحة: حول مسار النموذج اليدوي لا حول شكل الخط */
+  const mk=skeleton();dx.fillStyle="#000";dx.strokeStyle="#000";dx.lineCap=dx.lineJoin="round";dx.lineWidth=S*.15;
+  mk.strokes.forEach(sg=>{dx.beginPath();sg.forEach((p,i)=>i?dx.lineTo(p[0],p[1]):dx.moveTo(p[0],p[1]));dx.stroke()});
+  mk.marks.forEach(c=>{dx.beginPath();dx.arc(c[0],c[1],S*.075,0,6.2832);dx.fill()});
+ }else{const q=fit(dx,it.ch);
+ dx.fillStyle="#000";gFill(dx,it.ch,q);dx.lineWidth=S*.12;dx.lineJoin="round";dx.strokeStyle="#000";gStroke(dx,it.ch,q);}
  const D=dx.getImageData(0,0,S,S).data;
  const at=(arr,x,y)=>arr[(Math.min(S-1,Math.max(0,y))*S+Math.min(S-1,Math.max(0,x)))*4+3];
  // عينات الهدف مع رقم المكوّن (الجسم، الهمزة، كل نقطة...)
@@ -529,6 +641,10 @@ function score(){
 }
 /* مكوّنات الحرف نفسه (الجسم، كل نقطة، الهمزة...) تُستخرج من رسم الحرف مهما كان المستوى */
 function glyphComps(S,it){
+ if(st.level==="dots"&&st.kind==="letters"&&LP[it.ch]){
+  const samples=[],cnt={};skeleton().pts.forEach(q=>{const c=q[2];samples.push([Math.round(q[0]),Math.round(q[1]),c]);cnt[c]=(cnt[c]||0)+1});
+  return {samples:samples,cnt:cnt,total:samples.length};
+ }
  const tg=mkCanvas(S),tx=tg.getContext("2d"),p=fit(tx,it.ch);tx.fillStyle="#000";gFill(tx,it.ch,p);
  const T=tx.getImageData(0,0,S,S).data,k=3,W=Math.ceil(S/k),lab=new Int32Array(W*W).fill(-1);let nc=0;
  const on=(a,b)=>a>=0&&b>=0&&a<W&&b<W&&T[(Math.min(S-1,b*k)*S+Math.min(S-1,a*k))*4+3]>40;
